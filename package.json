@@ -6,7 +6,7 @@
   "description": "ส่งข้อมูลสแกนลายนิ้วมือจากเครื่อง ZKTeco ขึ้น Supabase (รันเป็น Windows service ประจำสาขา)",
   "scripts": {
     "start": "node src/index.mjs",
-    "test": "node --test test/"
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.5",

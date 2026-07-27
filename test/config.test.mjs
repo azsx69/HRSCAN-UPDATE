@@ -1,0 +1,81 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { loadConfig } from "../src/config.mjs";
+
+function makeRoot(ini, env) {
+  const dir = mkdtempSync(path.join(tmpdir(), "hrscan-cfg-"));
+  if (ini !== undefined) writeFileSync(path.join(dir, "config.ini"), ini, "utf8");
+  if (env !== undefined) writeFileSync(path.join(dir, ".env"), env, "utf8");
+  return dir;
+}
+
+test("อ่านค่าจาก config.ini ครบทุกหมวด", () => {
+  const root = makeRoot(`
+[branch]
+code = Store 3
+machine_code = FP-03
+
+[device]
+ip = 10.0.0.5
+port = 4370
+timeout_ms = 8000
+udp_local_port = 4001
+
+[sync]
+interval_minutes = 10
+start_date = 2026-02-01
+batch_size = 250
+
+[log]
+keep_days = 14
+`);
+  const cfg = loadConfig(root);
+  assert.equal(cfg.branch.code, "Store 3");
+  assert.equal(cfg.branch.machineCode, "FP-03");
+  assert.equal(cfg.device.ip, "10.0.0.5");
+  assert.equal(cfg.sync.startDate, "2026-02-01");
+  assert.equal(cfg.log.keepDays, 14);
+});
+
+test("ค่าตัวเลขต้องเป็น number ไม่ใช่ string", () => {
+  const cfg = loadConfig(makeRoot("[device]\nport = 4370\n[sync]\nbatch_size = 500\n"));
+  assert.equal(typeof cfg.device.port, "number");
+  assert.equal(typeof cfg.sync.batchSize, "number");
+});
+
+test("ไม่มี config.ini → ใช้ค่าเริ่มต้น ไม่ throw", () => {
+  const cfg = loadConfig(makeRoot(undefined));
+  assert.equal(cfg.device.port, 4370);
+  assert.equal(cfg.sync.intervalMinutes, 5);
+  assert.equal(cfg.log.keepDays, 30);
+});
+
+test("ข้ามบรรทัด comment และบรรทัดว่าง", () => {
+  const cfg = loadConfig(makeRoot("; หมายเหตุ\n# อีกแบบ\n\n[branch]\ncode = Store 9\n"));
+  assert.equal(cfg.branch.code, "Store 9");
+});
+
+test("ค่าที่มีเว้นวรรครอบ = ต้องถูก trim", () => {
+  const cfg = loadConfig(makeRoot("[branch]\n   code   =   Store 2   \n"));
+  assert.equal(cfg.branch.code, "Store 2");
+});
+
+test("อ่าน SUPABASE_URL / SUPABASE_SERVICE_KEY จาก .env", () => {
+  const cfg = loadConfig(makeRoot("", "SUPABASE_URL=https://x.supabase.co\nSUPABASE_SERVICE_KEY=abc123\n"));
+  assert.equal(cfg.supabase.url, "https://x.supabase.co");
+  assert.equal(cfg.supabase.serviceKey, "abc123");
+});
+
+test(".env รองรับ comment และค่าที่มีเครื่องหมาย = อยู่ข้างใน", () => {
+  const cfg = loadConfig(makeRoot("", "# comment\nSUPABASE_SERVICE_KEY=ab=cd=ef\n"));
+  assert.equal(cfg.supabase.serviceKey, "ab=cd=ef");
+});
+
+test("ไม่มี .env → คืนค่าว่าง ไม่ throw", () => {
+  const cfg = loadConfig(makeRoot("[branch]\ncode = Store 1\n"));
+  assert.equal(cfg.supabase.url, "");
+  assert.equal(cfg.supabase.serviceKey, "");
+});
