@@ -17,12 +17,12 @@ echo.
 
 net session >nul 2>&1
 if errorlevel 1 (
-    echo  [!] ต้องรันด้วยสิทธิ์ Administrator — คลิกขวาที่ไฟล์นี้แล้วเลือก "Run as administrator"
+    echo  [x] ต้องรันด้วยสิทธิ์ Administrator — คลิกขวาที่ไฟล์นี้แล้วเลือก "Run as administrator"
     pause & exit /b 1
 )
 
 if not exist "config.ini" (
-    echo  [!] ยังไม่ได้ตั้งค่า — รัน install\bootstrap.bat ก่อน
+    echo  [x] ยังไม่ได้ตั้งค่า — รัน install\bootstrap.bat ก่อน
     pause & exit /b 1
 )
 
@@ -47,7 +47,7 @@ if not exist "%NSSM_EXE%" (
     if exist "%WINGET_NSSM%" ( mkdir "%NSSM_DIR%" >nul 2>&1 & copy "%WINGET_NSSM%" "%NSSM_EXE%" >nul )
 )
 if not exist "%NSSM_EXE%" (
-    echo  [!] ไม่พบ NSSM — ติดตั้งเอง: winget install NSSM.NSSM แล้วคัดลอกไปที่ %NSSM_EXE%
+    echo  [x] ไม่พบ NSSM — ติดตั้งเอง: winget install NSSM.NSSM แล้วคัดลอกไปที่ %NSSM_EXE%
     pause & exit /b 1
 )
 
@@ -56,7 +56,7 @@ set "NODE_EXE="
 for %%N in (node.exe) do if not defined NODE_EXE set "NODE_EXE=%%~$PATH:N"
 if not defined NODE_EXE if exist "%ProgramFiles%\nodejs\node.exe" set "NODE_EXE=%ProgramFiles%\nodejs\node.exe"
 if not defined NODE_EXE (
-    echo  [!] ไม่พบ node.exe — รัน install\install.bat ก่อน
+    echo  [x] ไม่พบ node.exe — รัน install\install.bat ก่อน
     pause & exit /b 1
 )
 
@@ -94,7 +94,7 @@ if defined GIT_CMD_DIR set "EXTRA_PATH=!EXTRA_PATH!;!GIT_CMD_DIR!"
 
 "%NSSM_EXE%" start "%SERVICE_NAME%"
 if errorlevel 1 (
-    echo  [!] เริ่ม service ไม่สำเร็จ — ดู logs\service.err.log
+    echo  [x] เริ่ม service ไม่สำเร็จ — ดู logs\service.err.log
     pause & exit /b 1
 )
 

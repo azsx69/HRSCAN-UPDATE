@@ -16,7 +16,7 @@ if errorlevel 1 (
     winget install OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements
     where node >nul 2>&1
     if errorlevel 1 (
-        echo  [!] ติดตั้ง Node.js ไม่สำเร็จ — ติดตั้งเองจาก https://nodejs.org แล้วรันไฟล์นี้ใหม่
+        echo  [x] ติดตั้ง Node.js ไม่สำเร็จ — ติดตั้งเองจาก https://nodejs.org แล้วรันไฟล์นี้ใหม่
         pause & exit /b 1
     )
 )
@@ -28,7 +28,7 @@ if errorlevel 1 (
     winget install Git.Git --silent --accept-source-agreements --accept-package-agreements
     where git >nul 2>&1
     if errorlevel 1 (
-        echo  [!] ติดตั้ง Git ไม่สำเร็จ — ติดตั้งเองจาก https://git-scm.com แล้วรันไฟล์นี้ใหม่
+        echo  [x] ติดตั้ง Git ไม่สำเร็จ — ติดตั้งเองจาก https://git-scm.com แล้วรันไฟล์นี้ใหม่
         echo      ไม่มี Git จะอัปเดตเวอร์ชันผ่านเมนูไม่ได้
         pause & exit /b 1
     )
@@ -39,7 +39,7 @@ echo.
 echo  [*] ติดตั้ง dependency ...
 if exist "package-lock.json" ( call npm ci ) else ( call npm install )
 if errorlevel 1 (
-    echo  [!] ติดตั้ง dependency ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ต
+    echo  [x] ติดตั้ง dependency ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ต
     pause & exit /b 1
 )
 

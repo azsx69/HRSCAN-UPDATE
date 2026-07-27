@@ -72,7 +72,7 @@ node install\patch-config.mjs config.ini ^
     "branch.code=!BRANCH!" "branch.machine_code=!MACHINE!" ^
     "device.ip=!DEV_IP!" "device.port=!DEV_PORT!" ^
     "sync.interval_minutes=!INTERVAL!" "sync.start_date=!START_DATE!"
-if errorlevel 1 ( echo  [!] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
+if errorlevel 1 ( echo  [x] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
 
 if not "!SB_URL!"=="" node install\patch-config.mjs --env .env "SUPABASE_URL=!SB_URL!"
 if not "!SB_KEY!"=="" node install\patch-config.mjs --env .env "SUPABASE_SERVICE_KEY=!SB_KEY!"

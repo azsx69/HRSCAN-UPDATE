@@ -12,7 +12,7 @@ set "SERVICE_NAME=HrScanUpdateSvc"
 
 net session >nul 2>&1
 if errorlevel 1 (
-    echo  [!] ต้องรันด้วยสิทธิ์ Administrator
+    echo  [x] ต้องรันด้วยสิทธิ์ Administrator
     pause & exit /b 1
 )
 

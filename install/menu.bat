@@ -92,7 +92,7 @@ if defined WASRUNNING (
     echo  [*] เปิด service กลับ ...
     "%NSSM_EXE%" start %SERVICE_NAME% >nul 2>&1
 )
-if not "!SYNC_RC!"=="0" echo  [!] รอบนี้ไม่สำเร็จ — ดูข้อความด้านบน
+if not "!SYNC_RC!"=="0" echo  [x] รอบนี้ไม่สำเร็จ — ดูข้อความด้านบน
 exit /b 0
 
 :svcmenu

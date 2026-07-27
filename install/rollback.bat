@@ -29,7 +29,7 @@ for /f "delims=" %%t in ('git tag -l "v*" --sort^=-v:refname') do (
 )
 if not defined PREV (
     echo.
-    echo  [!] ไม่มีเวอร์ชันเก่ากว่านี้ให้ย้อนกลับ
+    echo  [x] ไม่มีเวอร์ชันเก่ากว่านี้ให้ย้อนกลับ
     pause & exit /b 1
 )
 
@@ -51,7 +51,7 @@ if not errorlevel 1 (
 
 git checkout !TARGET! --quiet
 if errorlevel 1 (
-    echo  [!] เปลี่ยนเวอร์ชันไม่สำเร็จ
+    echo  [x] เปลี่ยนเวอร์ชันไม่สำเร็จ
     if defined WASRUNNING "%NSSM_EXE%" start %SERVICE_NAME% >nul 2>&1
     pause & exit /b 1
 )
