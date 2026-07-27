@@ -17,28 +17,20 @@ import { toThaiStamp } from "./thaiTime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const statePath = path.join(root, "state.json");
-const command = process.argv[2] ?? "status";
 
 function version() {
   const file = path.join(root, "VERSION");
   return existsSync(file) ? readFileSync(file, "utf8").trim() : "(ไม่ทราบ)";
 }
 
-function requireConfigured(config) {
-  if (!existsSync(path.join(root, "config.ini"))) {
-    console.log("ยังไม่ได้ตั้งค่า — รัน install\\bootstrap.bat ก่อน");
-    process.exit(1);
-  }
-  return config;
+function isConfigured() {
+  return existsSync(path.join(root, "config.ini"));
 }
 
-const config = loadConfig(root);
-
-if (command === "status") {
+function showStatus(config) {
   const s = readState(statePath);
-  const configured = existsSync(path.join(root, "config.ini"));
   console.log(`เวอร์ชัน       : ${version()}`);
-  console.log(`สาขา          : ${config.branch.code}${configured ? "" : "  (ยังไม่ได้ตั้งค่า)"}`);
+  console.log(`สาขา          : ${config.branch.code}${isConfigured() ? "" : "  (ยังไม่ได้ตั้งค่า)"}`);
   console.log(`เครื่องสแกน     : ${config.device.ip}:${config.device.port}`);
   console.log(`ความถี่        : ทุก ${config.sync.intervalMinutes} นาที`);
   console.log(`เริ่มดึงตั้งแต่   : ${config.sync.startDate || "(ไม่กำหนด)"}`);
@@ -46,11 +38,10 @@ if (command === "status") {
   console.log(`รันล่าสุด       : ${s.last_run_at ?? "-"}  (${s.last_result ?? "-"})`);
   console.log(`ส่งสะสม        : ${s.pushed_total.toLocaleString()} แถว`);
   if (s.last_error) console.log(`ข้อผิดพลาดล่าสุด : ${s.last_error}`);
-  process.exit(0);
+  return 0;
 }
 
-if (command === "test-device") {
-  requireConfigured(config);
+async function checkDevice(config) {
   console.log(`กำลังต่อเครื่องสแกน ${config.device.ip}:${config.device.port} ...`);
   try {
     const r = await testDevice(config.device);
@@ -58,16 +49,15 @@ if (command === "test-device") {
     if (r.latest) console.log(`     สแกนล่าสุดในเครื่อง: ${toThaiStamp(r.latest)}`);
     // ให้คนหน้างานยืนยันด้วยตาว่าชื่อไทยไม่เพี้ยน — เป็นอาการที่ test อัตโนมัติจับไม่ได้
     if (r.sampleName) console.log(`     ตัวอย่างชื่อพนักงาน: ${r.sampleName}  <- ถ้าอ่านไม่ออกแปลว่า encoding เพี้ยน`);
-    process.exit(0);
+    return 0;
   } catch (e) {
     console.log(`[ไม่สำเร็จ] ${e.message}`);
     console.log("     ตรวจ IP/พอร์ต ในการตั้งค่า และตรวจว่าเครื่องสแกนเปิดอยู่และอยู่วง LAN เดียวกัน");
-    process.exit(1);
+    return 1;
   }
 }
 
-if (command === "test-supabase") {
-  requireConfigured(config);
+async function checkSupabase(config) {
   console.log(`กำลังต่อ Supabase ${config.supabase.url || "(ยังไม่ได้ตั้งค่า)"} ...`);
   try {
     const client = createClient(config.supabase);
@@ -75,26 +65,53 @@ if (command === "test-supabase") {
     const { error } = await client.from("fingerprint_attendance").select("id").limit(1);
     if (error) throw new Error(error.message);
     console.log("[OK] เชื่อมต่อได้ และเห็นตาราง fingerprint_attendance");
-    process.exit(0);
+    return 0;
   } catch (e) {
     console.log(`[ไม่สำเร็จ] ${e.message}`);
     console.log("     ตรวจ SUPABASE_URL และ SUPABASE_SERVICE_KEY ในการตั้งค่า");
-    process.exit(1);
+    return 1;
   }
 }
 
-if (command === "sync-now") {
-  requireConfigured(config);
+async function syncNow(config) {
   const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
   try {
     const client = createClient(config.supabase);
     const res = await runSync({ config, logger, statePath, readAttendance, pushRows, client });
-    process.exit(res.ok ? 0 : 1);
+    return res.ok ? 0 : 1;
   } catch (e) {
     logger.err(`ไม่สำเร็จ: ${e.message}`);
-    process.exit(1);
+    return 1;
   }
 }
 
-console.log(`ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-device | test-supabase | sync-now`);
-process.exit(1);
+async function main() {
+  const command = process.argv[2] ?? "status";
+  const config = loadConfig(root);
+
+  if (command === "status") return showStatus(config);
+
+  if (!isConfigured()) {
+    console.log("ยังไม่ได้ตั้งค่า — รัน install\\bootstrap.bat ก่อน");
+    return 1;
+  }
+
+  if (command === "test-device") return checkDevice(config);
+  if (command === "test-supabase") return checkSupabase(config);
+  if (command === "sync-now") return syncNow(config);
+
+  console.log(`ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-device | test-supabase | sync-now`);
+  return 1;
+}
+
+const code = await main();
+
+// ตั้ง exitCode แทนการเรียก process.exit() ทันที
+// supabase-js/undici ยังถือ handle ค้างอยู่หลัง await เสร็จ การสั่ง exit กลางคันทำให้ libuv
+// ยิง assertion (UV_HANDLE_CLOSING) แล้ว exit code กลายเป็นค่าติดลบ ซึ่ง .bat จะอ่านว่าล้มเหลว
+// ทั้งที่คำสั่งสำเร็จ — ปล่อยให้ Node จบเองหลัง event loop ว่างจึงถูกต้องกว่า
+process.exitCode = code;
+
+// กันกรณี handle บางตัวไม่ยอมปล่อย: บังคับจบหลัง 3 วินาที โดยคง exit code เดิมไว้
+const guard = setTimeout(() => process.exit(code), 3000);
+guard.unref();
