@@ -1,0 +1,9 @@
+# cmd.exe อ่านไฟล์ .bat ที่เป็น LF ล้วนไม่ออก — คำสั่งจะเพี้ยนแบบไล่สาเหตุยาก
+# บังคับ CRLF ไว้ เพื่อให้เครื่องสาขาที่ clone ไปได้ไฟล์ที่รันได้จริงเสมอ
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# ฝั่ง Node ใช้ LF ปกติ
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
