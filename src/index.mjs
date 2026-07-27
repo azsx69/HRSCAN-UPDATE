@@ -1,0 +1,61 @@
+// จุดเริ่มของ service — NSSM เรียกไฟล์นี้ (node.exe src\index.mjs)
+// ทำงานเป็นรอบตาม [sync] interval_minutes ไม่มี UI ทุกอย่างออกทาง log
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadConfig } from "./config.mjs";
+import { createLogger } from "./logger.mjs";
+import { readAttendance } from "./device.mjs";
+import { createClient, pushRows } from "./supabase.mjs";
+import { runSync } from "./sync.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const config = loadConfig(root);
+const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
+const statePath = path.join(root, "state.json");
+
+let client;
+try {
+  client = createClient(config.supabase);
+} catch (e) {
+  logger.err(`${e.message} — service จะรอจนกว่าจะตั้งค่าเสร็จแล้ว restart`);
+  process.exit(1); // NSSM จะ restart ให้เองตามที่ตั้งไว้ (หน่วง 10 วินาที)
+}
+
+// รอบก่อนยังไม่จบห้ามเริ่มรอบใหม่ — เครื่อง ZKTeco รับได้ทีละ 1 การเชื่อมต่อเท่านั้น
+let running = false;
+
+async function tick() {
+  if (running) {
+    logger.info("รอบก่อนหน้ายังทำงานอยู่ — ข้ามรอบนี้");
+    return;
+  }
+  running = true;
+  try {
+    await runSync({ config, logger, statePath, readAttendance, pushRows, client });
+  } catch (e) {
+    // runSync บันทึก state และ log ไว้แล้ว ตรงนี้แค่กันไม่ให้ service ตาย
+    logger.err(`รอบนี้ไม่สำเร็จ: ${e.message}`);
+  } finally {
+    running = false;
+  }
+}
+
+logger.info(
+  `เริ่มทำงาน — สาขา ${config.branch.code} · เครื่อง ${config.device.ip}:${config.device.port} · ทุก ${config.sync.intervalMinutes} นาที`,
+);
+
+await tick();
+const timer = setInterval(tick, Math.max(1, config.sync.intervalMinutes) * 60_000);
+
+function shutdown(signal) {
+  logger.info(`ได้รับสัญญาณ ${signal} — กำลังปิด`);
+  clearInterval(timer);
+  process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+// error ที่หลุดมาถึงตรงนี้ต้องไม่ทำให้ service ตายเงียบ ๆ โดยไม่มีร่องรอยใน log
+process.on("uncaughtException", (e) => logger.err(`ข้อผิดพลาดที่ไม่ได้ดัก: ${e.message}`));
+process.on("unhandledRejection", (e) => logger.err(`promise ที่ไม่ได้ดัก: ${e?.message ?? e}`));
