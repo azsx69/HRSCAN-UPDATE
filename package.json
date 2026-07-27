@@ -1,0 +1,16 @@
+{
+  "name": "hrscan-update",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ส่งข้อมูลสแกนลายนิ้วมือจากเครื่อง ZKTeco ขึ้น Supabase (รันเป็น Windows service ประจำสาขา)",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.5",
+    "iconv-lite": "^0.7.3",
+    "node-zklib": "^1.3.0"
+  }
+}

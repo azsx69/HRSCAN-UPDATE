@@ -1,0 +1,13 @@
+node_modules/
+
+# ค่าตั้งต่อสาขาและความลับ — ห้ามขึ้น repo (repo นี้เป็น public)
+config.ini
+.env
+
+# สถานะการทำงานของโปรแกรม
+state.json
+.sync.lock
+
+logs/
+backups/
+nssm/
