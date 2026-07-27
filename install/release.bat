@@ -11,7 +11,9 @@ cd /d "%ROOT%"
 set "TAG=%~1"
 set "NOTE=%~2"
 
-echo %TAG% | findstr /R "^v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$" >nul
+REM ตรวจรูปแบบ tag ด้วย Node ไม่ใช่ findstr — "echo %TAG% | findstr" ส่ง space ติดท้ายไปด้วย
+REM ทำให้ $ ไม่ match แล้ว tag ที่ถูกต้องถูกปฏิเสธ เป็นกับดักที่มองด้วยตาไม่เห็น
+node -e "process.exit(/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(process.argv[1]||'')?0:1)" "%TAG%"
 if errorlevel 1 (
     echo  [x] วิธีใช้: release.bat vX.Y.Z "หมายเหตุ"   เช่น release.bat v0.2.0 "แก้เวลาเพี้ยน"
     exit /b 1
