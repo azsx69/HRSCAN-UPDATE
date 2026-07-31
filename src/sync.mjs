@@ -3,17 +3,28 @@ import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 import { readState, writeState } from "./state.mjs";
 import { toPayload } from "./supabase.mjs";
 
+// แถวที่เวลาอยู่ในอนาคตเกิดจากนาฬิกาในเครื่องสแกนอ่านค่าปีผิดชั่วคราว (ถ่าน RTC ใกล้หมด)
+// ไม่ใช่ข้อมูลปลอม — เป็นการสแกนจริงที่ติดปีผิดมาเท่านั้น จึงไม่ลบทิ้งจากเครื่อง
+export function isFutureRow(record, now) {
+  return record.scannedAt > now;
+}
+
 // เลือกเฉพาะแถวที่ยังไม่ได้ส่ง แล้วเรียงจากเก่าไปใหม่
 //
 // เทียบ cursor แบบ >= ไม่ใช่ > เพราะพนักงานหลายคนสแกนในวินาทีเดียวกันได้:
 // ถ้าใช้ > แถวที่เวลาชนกับ cursor พอดีจะหายถาวรโดยไม่มีใครรู้
 // ยอมส่งซ้ำแถวขอบแล้วให้ unique constraint ฝั่ง Supabase กันซ้ำ ซึ่งถูกกว่าข้อมูลหาย
-export function selectNewRows(records, { cursor, startDate }) {
+//
+// ส่วนแถวเวลาอนาคตต้องกันออกตรงนี้ เพราะ runSync ขยับ cursor ตามแถวสุดท้ายของชุดที่เรียงแล้ว
+// ถ้าปล่อยผ่าน cursor จะกระโดดไปปีนั้นแล้วรอบถัดไปทุกรอบจะกรองข้อมูลจริงทิ้งหมด
+// ข้อมูลไม่ได้หายจากเครื่อง แต่จะไม่มีวันถูกส่งอีกเลยและไม่มี error ให้เห็น
+export function selectNewRows(records, { cursor, startDate, now = new Date() }) {
   const cursorAt = parseThaiStamp(cursor);
   const startAt = parseThaiStamp(startDate);
 
   return records
     .filter((r) => {
+      if (isFutureRow(r, now)) return false;
       if (startAt && r.scannedAt < startAt) return false;
       if (cursorAt && r.scannedAt < cursorAt) return false;
       return true;
@@ -46,8 +57,21 @@ export async function runSync({ config, logger, statePath, readAttendance, pushR
     return { read: 0, selected: 0, pushed: 0, ok: false };
   }
 
-  const fresh = selectNewRows(records, { cursor: state.last_scan_at, startDate: config.sync.startDate });
+  const fresh = selectNewRows(records, {
+    cursor: state.last_scan_at,
+    startDate: config.sync.startDate,
+    now: started,
+  });
   logger.info(`อ่าน log ได้ ${records.length.toLocaleString()} แถว`);
+
+  // ต้องบอกให้เห็นในรายงาน ไม่ใช่ข้ามเงียบ ๆ — เป็นอาการนาฬิกาที่ต้องให้ช่างไปเปลี่ยนถ่าน
+  const future = records.filter((r) => isFutureRow(r, started)).length;
+  if (future > 0) {
+    logger.err(
+      `ข้าม ${future.toLocaleString()} แถวที่เวลาอยู่ในอนาคต — นาฬิกาเครื่องสแกนเพี้ยน ` +
+        "(ข้อมูลยังอยู่ในเครื่องครบ ไม่ได้ถูกลบ) ให้ช่างตรวจถ่านนาฬิกาของเครื่อง",
+    );
+  }
 
   if (fresh.length === 0) {
     logger.info("ไม่มีข้อมูลใหม่");

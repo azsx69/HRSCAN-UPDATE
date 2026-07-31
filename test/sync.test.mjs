@@ -57,3 +57,35 @@ test("ไม่มีทั้ง cursor และ start_date → ส่งท�
   const out = selectNewRows(rows, { cursor: null, startDate: null });
   assert.equal(out.length, 1);
 });
+
+test("ข้ามแถวที่เวลาอยู่ในอนาคต — นาฬิกาเครื่องสแกนเพี้ยน", () => {
+  // เครื่องที่ถ่าน RTC ใกล้หมดจะบันทึกปีผิดเป็นครั้งคราว (พบจริงถึงปี 2119)
+  const rows = [rec("001", 2026, 7, 27, 9, 0, 0), rec("002", 2119, 7, 26, 20, 5, 9)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01", now: new Date(2026, 6, 31, 12, 0, 0) });
+  assert.deepEqual(out.map((r) => r.employeeCode), ["001"]);
+});
+
+test("แถวอนาคตต้องไม่ไปอยู่ท้ายชุด เพราะ cursor จะขยับตามแถวสุดท้าย", () => {
+  // นี่คือหัวใจของบั๊ก: ถ้าแถวปี 2119 หลุดไปเป็นแถวสุดท้าย cursor จะกระโดดไปปีนั้น
+  // แล้วรอบถัดไปทุกรอบจะกรองข้อมูลจริงทิ้งหมด — sync ตายเงียบ ๆ
+  const rows = [rec("002", 2119, 7, 26, 20, 5, 9), rec("001", 2026, 7, 27, 9, 0, 0)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01", now: new Date(2026, 6, 31, 12, 0, 0) });
+  assert.equal(out.at(-1).employeeCode, "001");
+});
+
+test("แถวอนาคตไม่ทำให้แถวปกติในรอบเดียวกันหายไปด้วย", () => {
+  const rows = [
+    rec("001", 2026, 7, 27, 9, 0, 0),
+    rec("002", 2119, 7, 26, 20, 5, 9),
+    rec("003", 2026, 7, 27, 10, 0, 0),
+  ];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01", now: new Date(2026, 6, 31, 12, 0, 0) });
+  assert.deepEqual(out.map((r) => r.employeeCode), ["001", "003"]);
+});
+
+test("แถวที่เวลาเท่ากับ now พอดี ยังส่งได้ตามปกติ", () => {
+  const now = new Date(2026, 6, 31, 12, 0, 0);
+  const rows = [rec("001", 2026, 7, 31, 12, 0, 0)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01", now });
+  assert.equal(out.length, 1);
+});
