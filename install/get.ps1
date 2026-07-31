@@ -10,7 +10,8 @@
 
 $ErrorActionPreference = "Stop"
 $repo = "https://github.com/azsx69/HRSCAN-UPDATE.git"
-$dest = "C:\HRSCAN-UPDATE"
+# ต้องตรงกับ TARGET ใน install\install.bat — ไม่งั้นสองเส้นทางติดตั้งจะไปคนละโฟลเดอร์
+$dest = "C:\Jaybon\HRSCAN-UPDATE"
 
 function Have($name) { return [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 

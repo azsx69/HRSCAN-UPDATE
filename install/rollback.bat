@@ -3,6 +3,8 @@ chcp 65001 >nul
 REM ============================================================
 REM   rollback.bat — ย้อนกลับไปเวอร์ชันก่อนหน้า
 REM ============================================================
+REM ค้างหน้าต่างไว้เมื่อถูกคลิกเองจาก Explorer — ดูคำอธิบายใน install.bat
+echo %cmdcmdline% | find /i "%~nx0" >nul && set "HOLD=1"
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -40,7 +42,11 @@ set /p "TARGET=ย้อนไปเวอร์ชัน [!PREV!]: "
 echo.
 set "OK=N"
 set /p "OK=ยืนยันย้อนจาก !CURRENT! ไป !TARGET! หรือไม่? (y/N): "
-if /i not "!OK!"=="Y" ( echo  ยกเลิก & exit /b 0 )
+if /i not "!OK!"=="Y" (
+    echo  ยกเลิก
+    if defined HOLD pause
+    exit /b 0
+)
 
 set "WASRUNNING="
 "%NSSM_EXE%" status %SERVICE_NAME% 2>nul | findstr /C:"SERVICE_RUNNING" >nul
@@ -60,4 +66,5 @@ if defined WASRUNNING "%NSSM_EXE%" start %SERVICE_NAME% >nul 2>&1
 
 echo.
 echo  [OK] ย้อนกลับเป็น !TARGET! แล้ว
+if defined HOLD pause
 exit /b 0

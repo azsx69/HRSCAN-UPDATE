@@ -3,6 +3,9 @@ chcp 65001 >nul
 REM ============================================================
 REM   install-service.bat — ลงทะเบียน NSSM service (ต้องรันด้วยสิทธิ์ Administrator)
 REM ============================================================
+REM ค้างหน้าต่างไว้เมื่อถูกคลิกเองจาก Explorer — ดูคำอธิบายใน install.bat
+REM ไฟล์นี้มักถูกคลิกขวา Run as administrator ตรง ๆ จึงจำเป็นเป็นพิเศษ
+echo %cmdcmdline% | find /i "%~nx0" >nul && set "HOLD=1"
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -101,4 +104,5 @@ if errorlevel 1 (
 echo.
 echo  [OK] %SERVICE_NAME% ทำงานแล้ว
 echo       ดูสถานะได้จาก install\menu.bat
+if defined HOLD pause
 exit /b 0

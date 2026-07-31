@@ -3,6 +3,8 @@ chcp 65001 >nul
 REM ============================================================
 REM   bootstrap.bat — ตั้งค่าประจำสาขา (config.ini + .env)
 REM ============================================================
+REM ค้างหน้าต่างไว้เมื่อถูกคลิกเองจาก Explorer — ดูคำอธิบายใน install.bat
+echo %cmdcmdline% | find /i "%~nx0" >nul && set "HOLD=1"
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -117,6 +119,10 @@ echo.
 REM -- ทดสอบทันทีตอนที่คนติดตั้งยังอยู่หน้าเครื่อง ดีกว่าไปพบว่าพิมพ์ IP ผิดในอีกสามวัน --
 set "DO_TEST=Y"
 set /p "DO_TEST=ทดสอบการเชื่อมต่อเลยไหม? (Y/n): "
-if /i "!DO_TEST!"=="N" exit /b 0
+if /i "!DO_TEST!"=="N" (
+    if defined HOLD pause
+    exit /b 0
+)
 call "%~dp0test-connection.bat"
+if defined HOLD pause
 exit /b 0

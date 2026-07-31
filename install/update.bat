@@ -4,6 +4,8 @@ REM ============================================================
 REM   update.bat — ดึง tag ล่าสุดมาใช้ แล้ว restart service
 REM   ถ้า service ไม่ขึ้นหลังอัปเดต จะย้อนกลับ tag เดิมอัตโนมัติ
 REM ============================================================
+REM ค้างหน้าต่างไว้เมื่อถูกคลิกเองจาก Explorer — ดูคำอธิบายใน install.bat
+echo %cmdcmdline% | find /i "%~nx0" >nul && set "HOLD=1"
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -34,13 +36,18 @@ echo  เวอร์ชันล่าสุด   : !LATEST!
 if "!LATEST!"=="!CURRENT!" (
     echo.
     echo  [OK] ใช้เวอร์ชันล่าสุดอยู่แล้ว ไม่ต้องอัปเดต
+    if defined HOLD pause
     exit /b 0
 )
 
 echo.
 set "OK=Y"
 set /p "OK=อัปเดตจาก !CURRENT! เป็น !LATEST! หรือไม่? (Y/n): "
-if /i "!OK!"=="N" ( echo  ยกเลิก & exit /b 0 )
+if /i "!OK!"=="N" (
+    echo  ยกเลิก
+    if defined HOLD pause
+    exit /b 0
+)
 
 REM -- จำ tag เดิมไว้เผื่อต้องย้อนกลับ --
 set "PREV="
@@ -92,4 +99,5 @@ if defined WASRUNNING (
 echo.
 echo  [OK] อัปเดตเป็น !LATEST! แล้ว
 echo       การตั้งค่าและ cursor ไม่ถูกแตะ (config.ini/.env/state.json ไม่ได้อยู่ใน git)
+if defined HOLD pause
 exit /b 0

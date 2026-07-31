@@ -5,7 +5,8 @@ REM   setup.bat — ติดตั้งครบขั้นตอนในค
 REM   ติดตั้งส่วนประกอบ -> ตั้งค่าสาขา -> ลง service -> เปิดเมนู
 REM ============================================================
 setlocal
-set "ROOT=%~dp0.."
+set "TARGET=C:\Jaybon\HRSCAN-UPDATE"
+for %%i in ("%~dp0..") do set "ROOT=%%~fi"
 cd /d "%ROOT%"
 
 echo ============================================
@@ -15,6 +16,16 @@ echo.
 
 call "%~dp0install.bat"
 if errorlevel 1 exit /b 1
+
+REM install.bat ย้ายโปรแกรมไปที่ TARGET แล้ว ขั้นตอนที่เหลือ (ตั้งค่า + ลง service)
+REM ต้องทำที่นั่น ไม่ใช่ที่โฟลเดอร์ต้นทาง ไม่งั้น service จะชี้ไปโฟลเดอร์ที่ไม่ได้ใช้จริง
+REM ตัวที่ TARGET จะเข้าเงื่อนไขนี้แล้วพบว่า ROOT ตรงกับ TARGET จึงไม่วนซ้ำ
+if /i not "%ROOT%"=="%TARGET%" (
+    echo.
+    echo  [*] ทำขั้นตอนที่เหลือที่ %TARGET%
+    call "%TARGET%\install\setup.bat"
+    exit /b %ERRORLEVEL%
+)
 
 echo.
 call "%~dp0bootstrap.bat"

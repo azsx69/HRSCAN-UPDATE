@@ -3,6 +3,8 @@ chcp 65001 >nul
 REM ============================================================
 REM   status.bat — สถานะ service + ค่าปัจจุบัน + log ล่าสุด
 REM ============================================================
+REM ค้างหน้าต่างไว้เมื่อถูกคลิกเองจาก Explorer — ดูคำอธิบายใน install.bat
+echo %cmdcmdline% | find /i "%~nx0" >nul && set "HOLD=1"
 setlocal enabledelayedexpansion
 set "ROOT=%~dp0.."
 cd /d "%ROOT%"
@@ -27,4 +29,5 @@ if exist "!LOGFILE!" (
 ) else (
     echo   ยังไม่มี log ของวันนี้ที่ !LOGFILE!
 )
+if defined HOLD pause
 exit /b 0
