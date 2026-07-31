@@ -32,19 +32,22 @@ export async function runSync({ config, logger, statePath, readAttendance, pushR
   const started = new Date();
   logger.info("เริ่มรอบ sync");
 
+  const state = readState(statePath);
+
   let records;
   try {
-    records = await readAttendance(config.device);
+    // บอกจุดเริ่มไปด้วย เพื่อให้แหล่งที่กรองได้ (ฐาน ZKBioTime) ไม่ต้องส่งข้อมูลเก่ามาทั้งหมดทุกรอบ
+    // แหล่งที่กรองไม่ได้ (เครื่องสแกน) จะเมินค่านี้แล้วให้ selectNewRows กรองในหน่วยความจำเหมือนเดิม
+    records = await readAttendance({ since: state.last_scan_at || config.sync.startDate });
   } catch (e) {
-    // เครื่องสแกนออฟไลน์เป็นเรื่องปกติ ไม่ใช่เหตุให้ service ตาย — cursor ไม่ขยับ รอบหน้าลองใหม่
-    logger.err(`ต่อเครื่องสแกนไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
+    // แหล่งข้อมูลออฟไลน์เป็นเรื่องปกติ ไม่ใช่เหตุให้ service ตาย — cursor ไม่ขยับ รอบหน้าลองใหม่
+    logger.err(`อ่านข้อมูลสแกนไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
     writeState(statePath, { last_run_at: toThaiStamp(started), last_result: "error", last_error: e.message });
     return { read: 0, selected: 0, pushed: 0, ok: false };
   }
 
-  const state = readState(statePath);
   const fresh = selectNewRows(records, { cursor: state.last_scan_at, startDate: config.sync.startDate });
-  logger.info(`อ่าน log จากเครื่อง ${records.length.toLocaleString()} แถว`);
+  logger.info(`อ่าน log ได้ ${records.length.toLocaleString()} แถว`);
 
   if (fresh.length === 0) {
     logger.info("ไม่มีข้อมูลใหม่");

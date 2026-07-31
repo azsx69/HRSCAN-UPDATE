@@ -1,6 +1,6 @@
 // คำสั่งที่สคริปต์ .bat ในเมนูเรียกใช้
 //   node src\cli.mjs status         แสดงสถานะจาก state.json
-//   node src\cli.mjs test-device    ทดสอบต่อเครื่องสแกน
+//   node src\cli.mjs test-source    ทดสอบต่อแหล่งข้อมูลสแกน (เครื่อง ZKTeco หรือฐาน ZKBioTime)
 //   node src\cli.mjs test-supabase  ทดสอบต่อ Supabase
 //   node src\cli.mjs sync-now       สั่ง sync 1 รอบแบบเห็นผลบนจอ
 // ทุกคำสั่งคืน exit code 0 = สำเร็จ, 1 = ไม่สำเร็จ ให้ .bat เช็คได้
@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./logger.mjs";
-import { readAttendance, testDevice } from "./device.mjs";
+import { createReader, createTester, describeSource, isBiotime } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runSync } from "./sync.mjs";
 import { readState } from "./state.mjs";
@@ -31,7 +31,7 @@ function showStatus(config) {
   const s = readState(statePath);
   console.log(`เวอร์ชัน       : ${version()}`);
   console.log(`สาขา          : ${config.branch.code}${isConfigured() ? "" : "  (ยังไม่ได้ตั้งค่า)"}`);
-  console.log(`เครื่องสแกน     : ${config.device.ip}:${config.device.port}`);
+  console.log(`แหล่งข้อมูล     : ${describeSource(config)}`);
   console.log(`ความถี่        : ทุก ${config.sync.intervalMinutes} นาที`);
   console.log(`เริ่มดึงตั้งแต่   : ${config.sync.startDate || "(ไม่กำหนด)"}`);
   console.log(`สแกนถึง        : ${s.last_scan_at ?? "ยังไม่เคยส่ง"}`);
@@ -41,18 +41,22 @@ function showStatus(config) {
   return 0;
 }
 
-async function checkDevice(config) {
-  console.log(`กำลังต่อเครื่องสแกน ${config.device.ip}:${config.device.port} ...`);
+async function checkSource(config) {
+  console.log(`กำลังเชื่อมต่อ ${describeSource(config)} ...`);
   try {
-    const r = await testDevice(config.device);
+    const r = await createTester(config)();
     console.log(`[OK] อ่าน log ได้ ${r.total.toLocaleString()} แถว`);
-    if (r.latest) console.log(`     สแกนล่าสุดในเครื่อง: ${toThaiStamp(r.latest)}`);
+    if (r.latest) console.log(`     สแกนล่าสุดที่บันทึกไว้: ${toThaiStamp(r.latest)}`);
     // ให้คนหน้างานยืนยันด้วยตาว่าชื่อไทยไม่เพี้ยน — เป็นอาการที่ test อัตโนมัติจับไม่ได้
     if (r.sampleName) console.log(`     ตัวอย่างชื่อพนักงาน: ${r.sampleName}  <- ถ้าอ่านไม่ออกแปลว่า encoding เพี้ยน`);
     return 0;
   } catch (e) {
     console.log(`[ไม่สำเร็จ] ${e.message}`);
-    console.log("     ตรวจ IP/พอร์ต ในการตั้งค่า และตรวจว่าเครื่องสแกนเปิดอยู่และอยู่วง LAN เดียวกัน");
+    console.log(
+      isBiotime(config)
+        ? "     ตรวจว่า ZKBioTime เปิดอยู่ และค่า [biotime] psql_path/port/database ถูกต้อง"
+        : "     ตรวจ IP/พอร์ต ในการตั้งค่า และตรวจว่าเครื่องสแกนเปิดอยู่และอยู่วง LAN เดียวกัน",
+    );
     return 1;
   }
 }
@@ -77,6 +81,7 @@ async function syncNow(config) {
   const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
   try {
     const client = createClient(config.supabase);
+    const readAttendance = createReader(config);
     const res = await runSync({ config, logger, statePath, readAttendance, pushRows, client });
     return res.ok ? 0 : 1;
   } catch (e) {
@@ -96,11 +101,12 @@ async function main() {
     return 1;
   }
 
-  if (command === "test-device") return checkDevice(config);
+  // test-source เป็นชื่อที่ตรงกว่าเมื่อสาขาอ่านจากฐาน ZKBioTime — คง test-device ไว้ให้สคริปต์เดิมเรียกได้
+  if (command === "test-device" || command === "test-source") return checkSource(config);
   if (command === "test-supabase") return checkSupabase(config);
   if (command === "sync-now") return syncNow(config);
 
-  console.log(`ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-device | test-supabase | sync-now`);
+  console.log(`ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now`);
   return 1;
 }
 

@@ -52,11 +52,26 @@ export function loadConfig(root = process.cwd()) {
       code: cfg("branch", "code", "Store 1"),
       machineCode: cfg("branch", "machine_code", ""),
     },
+    // แหล่งข้อมูลสแกน: "device" = ต่อเครื่อง ZKTeco ตรง, "biotime" = อ่านจากฐานของ ZKBioTime ในเครื่อง
+    // ไม่ระบุ = device เพื่อให้สาขาที่ติดตั้งไปแล้วทำงานต่อได้โดยไม่ต้องแก้ config.ini
+    source: {
+      type: cfg("source", "type", "device").toLowerCase(),
+    },
     device: {
       ip: cfg("device", "ip", "192.168.88.175"),
       port: num("device", "port", 4370),
       timeoutMs: num("device", "timeout_ms", 10000),
       udpLocalPort: num("device", "udp_local_port", 4000),
+    },
+    biotime: {
+      psqlPath: cfg("biotime", "psql_path", "C:\\ZKBioTime\\pgsql\\bin\\psql.exe"),
+      host: cfg("biotime", "host", "127.0.0.1"),
+      port: num("biotime", "port", 7496),
+      database: cfg("biotime", "database", "biotime"),
+      user: cfg("biotime", "user", "postgres"),
+      timeoutMs: num("biotime", "timeout_ms", 30000),
+      // ปกติ ZKBioTime ตั้งให้ต่อจากในเครื่องได้โดยไม่ต้องใช้รหัสผ่าน — ใส่เฉพาะเครื่องที่ตั้งไว้ต่างไป
+      password: env.BIOTIME_PASSWORD ?? "",
     },
     sync: {
       intervalMinutes: num("sync", "interval_minutes", 5),

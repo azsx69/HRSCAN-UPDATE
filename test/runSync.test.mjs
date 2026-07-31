@@ -131,6 +131,28 @@ test("batch ที่ 2 ล้ม → cursor ขยับถึงแค่ท�
   assert.equal(readState(statePath).last_scan_at, "2026-07-27 09:01:00");
 });
 
+test("ส่ง cursor ให้แหล่งข้อมูลกรองตั้งแต่ต้นทาง", async () => {
+  // ฐานของ ZKBioTime สะสมข้อมูลย้อนหลังเป็นแสนแถว ถ้าไม่บอกจุดเริ่มจะดึงทั้งฐานทุก 5 นาที
+  const statePath = newStatePath();
+  writeState(statePath, { last_scan_at: "2026-07-27 08:00:00" });
+  let options;
+  await runSync({
+    ...deps({ readAttendance: async (opts) => { options = opts; return []; } }),
+    statePath,
+  });
+  assert.equal(options.since, "2026-07-27 08:00:00");
+});
+
+test("ยังไม่เคยส่ง → ใช้ start_date เป็นจุดเริ่ม", async () => {
+  const statePath = newStatePath();
+  let options;
+  await runSync({
+    ...deps({ readAttendance: async (opts) => { options = opts; return []; } }),
+    statePath,
+  });
+  assert.equal(options.since, "2026-01-01");
+});
+
 test("pushed_total สะสมข้ามรอบ", async () => {
   const statePath = newStatePath();
   await runSync({ ...deps({ readAttendance: async () => [rec("001", 9, 0)] }), statePath });

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./logger.mjs";
-import { readAttendance } from "./device.mjs";
+import { createReader, describeSource } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runSync } from "./sync.mjs";
 
@@ -21,7 +21,11 @@ try {
   process.exit(1); // NSSM จะ restart ให้เองตามที่ตั้งไว้ (หน่วง 10 วินาที)
 }
 
-// รอบก่อนยังไม่จบห้ามเริ่มรอบใหม่ — เครื่อง ZKTeco รับได้ทีละ 1 การเชื่อมต่อเท่านั้น
+// อ่านจากเครื่องสแกนตรง หรือจากฐานของ ZKBioTime ตาม [source] type ที่สาขาตั้งไว้
+const readAttendance = createReader(config);
+
+// รอบก่อนยังไม่จบห้ามเริ่มรอบใหม่ — เครื่อง ZKTeco รับได้ทีละ 1 การเชื่อมต่อ และ state.json
+// ก็ต้องไม่ถูกเขียนพร้อมกันจากสองรอบ
 let running = false;
 
 async function tick() {
@@ -41,7 +45,7 @@ async function tick() {
 }
 
 logger.info(
-  `เริ่มทำงาน — สาขา ${config.branch.code} · เครื่อง ${config.device.ip}:${config.device.port} · ทุก ${config.sync.intervalMinutes} นาที`,
+  `เริ่มทำงาน — สาขา ${config.branch.code} · ${describeSource(config)} · ทุก ${config.sync.intervalMinutes} นาที`,
 );
 
 await tick();

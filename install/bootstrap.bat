@@ -27,6 +27,10 @@ set "CUR_IP=192.168.88.175"
 set "CUR_PORT=4370"
 set "CUR_INTERVAL=5"
 set "CUR_START=2026-01-01"
+set "CUR_SOURCE=device"
+set "CUR_PSQL=C:\ZKBioTime\pgsql\bin\psql.exe"
+set "CUR_DB=biotime"
+REM ตัวอ่านนี้ไม่แยกหมวด จึงใช้ค่าแรกที่เจอสำหรับคีย์ที่ซ้ำกันข้ามหมวด (port มีทั้ง [device] และ [biotime])
 for /f "usebackq tokens=1,* delims==" %%A in ("config.ini") do (
     set "K=%%A"
     set "K=!K: =!"
@@ -34,8 +38,11 @@ for /f "usebackq tokens=1,* delims==" %%A in ("config.ini") do (
     for /f "tokens=* delims= " %%x in ("!V!") do set "V=%%x"
     if /i "!K!"=="code" if not defined GOT_BRANCH ( set "CUR_BRANCH=!V!" & set "GOT_BRANCH=1" )
     if /i "!K!"=="machine_code" set "CUR_MACHINE=!V!"
+    if /i "!K!"=="type" set "CUR_SOURCE=!V!"
     if /i "!K!"=="ip" set "CUR_IP=!V!"
     if /i "!K!"=="port" if not defined GOT_PORT ( set "CUR_PORT=!V!" & set "GOT_PORT=1" )
+    if /i "!K!"=="psql_path" set "CUR_PSQL=!V!"
+    if /i "!K!"=="database" set "CUR_DB=!V!"
     if /i "!K!"=="interval_minutes" set "CUR_INTERVAL=!V!"
     if /i "!K!"=="start_date" set "CUR_START=!V!"
 )
@@ -47,11 +54,29 @@ set "MACHINE=!CUR_MACHINE!"
 set /p "MACHINE=Machine code [!CUR_MACHINE!]: "
 
 echo.
-echo --- เครื่องสแกน ---
-set "DEV_IP=!CUR_IP!"
-set /p "DEV_IP=IP เครื่องสแกน [!CUR_IP!]: "
-set "DEV_PORT=!CUR_PORT!"
-set /p "DEV_PORT=Port [!CUR_PORT!]: "
+echo --- แหล่งข้อมูลสแกน ---
+set "CUR_CHOICE=1"
+if /i "!CUR_SOURCE!"=="biotime" set "CUR_CHOICE=2"
+echo    1. ต่อเครื่องสแกน ZKTeco ตรง ๆ
+echo    2. อ่านจากฐานข้อมูล ZKBioTime ในเครื่องนี้  (สำหรับสาขาที่ลง ZKBioTime ไว้)
+set "SRC_CHOICE=!CUR_CHOICE!"
+set /p "SRC_CHOICE=เลือก [!CUR_CHOICE!]: "
+
+if "!SRC_CHOICE!"=="2" (
+    set "SRC_TYPE=biotime"
+    echo.
+    set "BIO_PSQL=!CUR_PSQL!"
+    set /p "BIO_PSQL=พาธ psql.exe ของ ZKBioTime [!CUR_PSQL!]: "
+    set "BIO_DB=!CUR_DB!"
+    set /p "BIO_DB=ชื่อฐานข้อมูล [!CUR_DB!]: "
+) else (
+    set "SRC_TYPE=device"
+    echo.
+    set "DEV_IP=!CUR_IP!"
+    set /p "DEV_IP=IP เครื่องสแกน [!CUR_IP!]: "
+    set "DEV_PORT=!CUR_PORT!"
+    set /p "DEV_PORT=Port [!CUR_PORT!]: "
+)
 
 echo.
 echo --- Supabase ---
@@ -70,8 +95,16 @@ set /p "START_DATE=เริ่มดึงข้อมูลตั้งแต�
 
 node install\patch-config.mjs config.ini ^
     "branch.code=!BRANCH!" "branch.machine_code=!MACHINE!" ^
-    "device.ip=!DEV_IP!" "device.port=!DEV_PORT!" ^
+    "source.type=!SRC_TYPE!" ^
     "sync.interval_minutes=!INTERVAL!" "sync.start_date=!START_DATE!"
+if errorlevel 1 ( echo  [x] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
+
+REM เขียนเฉพาะค่าของแหล่งที่เลือก — ค่าของอีกแหล่งคงไว้เผื่อสลับกลับ
+if "!SRC_TYPE!"=="biotime" (
+    node install\patch-config.mjs config.ini "biotime.psql_path=!BIO_PSQL!" "biotime.database=!BIO_DB!"
+) else (
+    node install\patch-config.mjs config.ini "device.ip=!DEV_IP!" "device.port=!DEV_PORT!"
+)
 if errorlevel 1 ( echo  [x] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
 
 if not "!SB_URL!"=="" node install\patch-config.mjs --env .env "SUPABASE_URL=!SB_URL!"

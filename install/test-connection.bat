@@ -8,8 +8,8 @@ set "ROOT=%~dp0.."
 cd /d "%ROOT%"
 
 echo.
-echo --- 1/2 เครื่องสแกน ---
-node src\cli.mjs test-device
+echo --- 1/2 แหล่งข้อมูลสแกน ---
+node src\cli.mjs test-source
 set "DEV_RC=%ERRORLEVEL%"
 
 echo.

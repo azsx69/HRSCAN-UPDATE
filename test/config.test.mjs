@@ -79,3 +79,46 @@ test("ไม่มี .env → คืนค่าว่าง ไม่ throw", 
   assert.equal(cfg.supabase.url, "");
   assert.equal(cfg.supabase.serviceKey, "");
 });
+
+test("ไม่ระบุชนิดแหล่งข้อมูล → ต่อเครื่องสแกนตรงเหมือนเดิม", () => {
+  // สาขาที่ติดตั้งไปแล้วต้องทำงานต่อได้โดยไม่ต้องแก้ config.ini
+  assert.equal(loadConfig(makeRoot("[branch]\ncode = Store 1\n")).source.type, "device");
+});
+
+test("อ่านค่าหมวด biotime ครบ", () => {
+  const cfg = loadConfig(
+    makeRoot(`
+[source]
+type = biotime
+
+[biotime]
+psql_path  = C:\\ZKBioTime\\pgsql\\bin\\psql.exe
+host       = 127.0.0.1
+port       = 7496
+database   = biotime
+user       = postgres
+timeout_ms = 20000
+`),
+  );
+  assert.equal(cfg.source.type, "biotime");
+  assert.equal(cfg.biotime.database, "biotime");
+  assert.equal(cfg.biotime.port, 7496);
+  assert.equal(typeof cfg.biotime.timeoutMs, "number");
+});
+
+test("ชนิดแหล่งข้อมูลไม่สนตัวพิมพ์เล็กใหญ่", () => {
+  assert.equal(loadConfig(makeRoot("[source]\ntype = BioTime\n")).source.type, "biotime");
+});
+
+test("ค่าเริ่มต้นของ biotime ตรงกับที่ ZKBioTime ติดตั้งมา", () => {
+  const cfg = loadConfig(makeRoot("[source]\ntype = biotime\n"));
+  assert.equal(cfg.biotime.host, "127.0.0.1");
+  assert.equal(cfg.biotime.port, 7496);
+  assert.equal(cfg.biotime.user, "postgres");
+  assert.match(cfg.biotime.psqlPath, /psql\.exe$/);
+});
+
+test("รหัสผ่าน biotime อ่านจาก .env เท่านั้น ไม่เก็บใน config.ini", () => {
+  const cfg = loadConfig(makeRoot("[source]\ntype = biotime\n", "BIOTIME_PASSWORD=s3cret\n"));
+  assert.equal(cfg.biotime.password, "s3cret");
+});
