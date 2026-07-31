@@ -122,3 +122,19 @@ test("รหัสผ่าน biotime อ่านจาก .env เท่า�
   const cfg = loadConfig(makeRoot("[source]\ntype = biotime\n", "BIOTIME_PASSWORD=s3cret\n"));
   assert.equal(cfg.biotime.password, "s3cret");
 });
+
+test("Store 2 บังคับอ่านจากเครื่องโดยตรงแม้ config เก่าเคยตั้ง biotime", () => {
+  const cfg = loadConfig(makeRoot("[branch]\ncode = Store 2\n[source]\ntype = biotime\n"));
+  assert.equal(cfg.source.type, "device");
+});
+
+test("Store 2 ใช้ IP เครื่อง Jaybon02 โดยไม่กระทบ Store 1", () => {
+  const store2 = loadConfig(makeRoot("[branch]\ncode = Store 2\n[device]\nip = 192.168.88.175\ntimeout_ms = 10000\n"));
+  const store1 = loadConfig(makeRoot("[branch]\ncode = Store 1\n[device]\nip = 192.168.88.175\ntimeout_ms = 10000\n"));
+  assert.equal(store2.device.ip, "192.168.1.69");
+  assert.equal(store2.device.timeoutMs, 120000);
+  assert.equal(store2.device.attendancePacketSize, 49);
+  assert.equal(store1.device.ip, "192.168.88.175");
+  assert.equal(store1.device.timeoutMs, 10000);
+  assert.equal(store1.device.attendancePacketSize, undefined);
+});

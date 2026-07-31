@@ -45,23 +45,28 @@ export function loadConfig(root = process.cwd()) {
 
   const cfg = (section, key, fallback = "") => ini[section]?.[key] ?? fallback;
   const num = (section, key, fallback) => Number(cfg(section, key, "")) || fallback;
+  const branchCode = cfg("branch", "code", "Store 1");
+  const isStore2 = branchCode.trim().toLowerCase() === "store 2";
 
   return {
     root,
     branch: {
-      code: cfg("branch", "code", "Store 1"),
+      code: branchCode,
       machineCode: cfg("branch", "machine_code", ""),
     },
     // แหล่งข้อมูลสแกน: "device" = ต่อเครื่อง ZKTeco ตรง, "biotime" = อ่านจากฐานของ ZKBioTime ในเครื่อง
     // ไม่ระบุ = device เพื่อให้สาขาที่ติดตั้งไปแล้วทำงานต่อได้โดยไม่ต้องแก้ config.ini
+    // Store 2 ใช้ MB40-VL โดยตรงเสมอ; config เก่าที่เคยตั้ง biotime จะถูก override เฉพาะสาขานี้
     source: {
-      type: cfg("source", "type", "device").toLowerCase(),
+      type: isStore2 ? "device" : cfg("source", "type", "device").toLowerCase(),
     },
     device: {
-      ip: cfg("device", "ip", "192.168.88.175"),
+      // Store 2 ติดตั้ง Jaybon02 ที่ IP นี้; override config เก่าที่มาจาก template ของ Store 1
+      ip: isStore2 ? "192.168.1.69" : cfg("device", "ip", "192.168.88.175"),
       port: num("device", "port", 4370),
-      timeoutMs: num("device", "timeout_ms", 10000),
+      timeoutMs: isStore2 ? 120000 : num("device", "timeout_ms", 10000),
       udpLocalPort: num("device", "udp_local_port", 4000),
+      attendancePacketSize: isStore2 ? 49 : undefined,
     },
     biotime: {
       psqlPath: cfg("biotime", "psql_path", "C:\\ZKBioTime\\pgsql\\bin\\psql.exe"),

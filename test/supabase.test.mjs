@@ -37,6 +37,18 @@ test("payload ตรงกับ schema ฝั่ง Supabase", () => {
   });
 });
 
+test("Store 2 ใช้ payload และ natural key ชุดเดียวกับ Store 1", () => {
+  assert.deepEqual(toPayload([record], { code: "Store 2", machineCode: "Jaybon02" })[0], {
+    branch: "Store 2",
+    employee_code: "001",
+    employee_name: "สมชาย",
+    scan_date: "2026-07-27",
+    scan_time: "09:18:22",
+    source: "k50id",
+    source_machine: "Jaybon02",
+  });
+});
+
 test("ไม่มีชื่อพนักงาน → ส่ง null ไม่ใช่สตริงว่าง", () => {
   const rows = toPayload([{ ...record, employeeName: "" }], branch);
   assert.equal(rows[0].employee_name, null);
