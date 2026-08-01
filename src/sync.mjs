@@ -18,14 +18,17 @@ export function isFutureRow(record, now) {
 // ส่วนแถวเวลาอนาคตต้องกันออกตรงนี้ เพราะ runSync ขยับ cursor ตามแถวสุดท้ายของชุดที่เรียงแล้ว
 // ถ้าปล่อยผ่าน cursor จะกระโดดไปปีนั้นแล้วรอบถัดไปทุกรอบจะกรองข้อมูลจริงทิ้งหมด
 // ข้อมูลไม่ได้หายจากเครื่อง แต่จะไม่มีวันถูกส่งอีกเลยและไม่มี error ให้เห็น
-export function selectNewRows(records, { cursor, startDate, now = new Date() }) {
+// until ใช้เฉพาะโหมดดึงย้อนหลัง (runRange) — รอบปกติของ service ไม่ส่งค่านี้จึงไม่มีขอบบน
+export function selectNewRows(records, { cursor, startDate, until, now = new Date() }) {
   const cursorAt = parseThaiStamp(cursor);
   const startAt = parseThaiStamp(startDate);
+  const untilAt = parseThaiStamp(until);
 
   return records
     .filter((r) => {
       if (isFutureRow(r, now)) return false;
       if (startAt && r.scannedAt < startAt) return false;
+      if (untilAt && r.scannedAt > untilAt) return false;
       if (cursorAt && r.scannedAt < cursorAt) return false;
       return true;
     })
@@ -106,4 +109,41 @@ export async function runSync({ config, logger, statePath, readAttendance, pushR
   const cursor = readState(statePath).last_scan_at;
   logger.ok(`push สำเร็จ ${pushed.toLocaleString()} แถว → cursor = ${cursor}`);
   return { read: records.length, selected: fresh.length, pushed, cursor, ok: true };
+}
+
+// ดึงย้อนหลังตามช่วงวันที่ที่สั่งจาก CLI — แยกจาก runSync เพราะต้องไม่แตะ state.json เลย
+//
+// ถ้าโหมดนี้ขยับ cursor ตามช่วงที่ดึง service จะหยุดส่งข้อมูลปัจจุบันทันทีโดยไม่มี error ให้เห็น
+// (อาการเดียวกับบั๊กแถวเวลาอนาคต) แลกกับ pushed_total ในหน้าสถานะที่จะไม่นับรอบนี้
+//
+// ส่งซ้ำกี่รอบก็ได้ ไม่เกิดข้อมูลซ้ำ เพราะปลายทาง upsert แบบ ignoreDuplicates อยู่แล้ว
+export async function runRange({ config, logger, from, until, readAttendance, pushRows, client }) {
+  logger.info(`เริ่มดึงย้อนหลัง ${from} ถึง ${until}`);
+
+  const records = await readAttendance({ since: from, until });
+  logger.info(`อ่าน log ได้ ${records.length.toLocaleString()} แถว`);
+
+  // cursor เป็น null เสมอ: ช่วงที่สั่งต้องได้ครบ แม้ service จะส่งเลยช่วงนั้นไปแล้วก็ตาม
+  const rows = selectNewRows(records, { cursor: null, startDate: from, until });
+
+  if (rows.length === 0) {
+    logger.info("ไม่มีข้อมูลในช่วงที่ระบุ");
+    return { read: records.length, selected: 0, pushed: 0, ok: true };
+  }
+  logger.info(`อยู่ในช่วงที่ระบุ ${rows.length.toLocaleString()} แถว`);
+
+  let pushed = 0;
+  try {
+    for (const part of chunk(rows, config.sync.batchSize)) {
+      await pushRows(client, toPayload(part, config.branch));
+      pushed += part.length;
+      logger.info(`ส่งแล้ว ${pushed.toLocaleString()}/${rows.length.toLocaleString()} แถว`);
+    }
+  } catch (e) {
+    logger.err(`ส่งข้อมูลไม่สำเร็จ (${e.message}) — ส่งได้ ${pushed.toLocaleString()} แถว สั่งซ้ำช่วงเดิมได้เลย`);
+    throw e;
+  }
+
+  logger.ok(`push สำเร็จ ${pushed.toLocaleString()} แถว (ตัวจำของ service ไม่เปลี่ยน)`);
+  return { read: records.length, selected: rows.length, pushed, ok: true };
 }

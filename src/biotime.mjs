@@ -33,11 +33,18 @@ function padEmployeeCode(id) {
 
 // punch_time เป็น timestamptz — AT TIME ZONE 'Asia/Bangkok' จึงคืนเวลาไทยตามที่เห็นบนหน้าเครื่อง
 //
-// since ต้องผ่าน parseThaiStamp แล้วประกอบกลับด้วย toThaiStamp เสมอ ค่าที่เข้า SQL จึงเป็น
-// รูปแบบวันที่ล้วนที่โปรแกรมสร้างเอง ไม่ใช่ข้อความจาก state.json/config ที่แก้ด้วยมือได้
-export function buildQuery(since) {
+// since/until ต้องผ่าน parseThaiStamp แล้วประกอบกลับด้วย toThaiStamp เสมอ ค่าที่เข้า SQL จึงเป็น
+// รูปแบบวันที่ล้วนที่โปรแกรมสร้างเอง ไม่ใช่ข้อความจาก state.json/config/บรรทัดคำสั่ง ที่แก้ด้วยมือได้
+//
+// until ใส่เฉพาะตอนดึงย้อนหลัง — รอบปกติของ service ส่งมาแค่ since จึงไม่มีขอบบนเหมือนเดิม
+export function buildQuery(since, until) {
   const at = parseThaiStamp(since);
-  const where = at ? `\n WHERE t.punch_time AT TIME ZONE 'Asia/Bangkok' >= TIMESTAMP '${toThaiStamp(at)}'` : "";
+  const to = parseThaiStamp(until);
+  const punchTime = "t.punch_time AT TIME ZONE 'Asia/Bangkok'";
+  const bounds = [];
+  if (at) bounds.push(`${punchTime} >= TIMESTAMP '${toThaiStamp(at)}'`);
+  if (to) bounds.push(`${punchTime} <= TIMESTAMP '${toThaiStamp(to)}'`);
+  const where = bounds.length ? `\n WHERE ${bounds.join("\n   AND ")}` : "";
   return `${SELECT_CLAUSE}${where}\n ORDER BY t.punch_time`;
 }
 
@@ -85,8 +92,8 @@ async function runPsql({ psqlPath, host, port, database, user, password, timeout
   }
 }
 
-export async function readAttendance(biotime, { since } = {}) {
-  return parseRows(await runPsql(biotime, buildQuery(since)));
+export async function readAttendance(biotime, { since, until } = {}) {
+  return parseRows(await runPsql(biotime, buildQuery(since, until)));
 }
 
 // ใช้กับเมนู "ทดสอบการเชื่อมต่อ" — คืนข้อมูลสรุปรูปแบบเดียวกับ testDevice ของฝั่งเครื่องสแกน

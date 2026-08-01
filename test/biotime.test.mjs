@@ -74,6 +74,25 @@ test("cursor ที่เป็นวันที่ล้วนใช้ได�
   assert.match(buildQuery("2026-02-01"), />= TIMESTAMP '2026-02-01 00:00:00'/);
 });
 
+test("มี until → query มีขอบบนแบบ <= ด้วย", () => {
+  const sql = buildQuery("2026-07-01 00:00:00", "2026-07-31 23:59:59");
+  assert.match(sql, />= TIMESTAMP '2026-07-01 00:00:00'/);
+  assert.match(sql, /<= TIMESTAMP '2026-07-31 23:59:59'/);
+});
+
+test("มี until อย่างเดียว → query มีแต่ขอบบน", () => {
+  const sql = buildQuery(null, "2026-07-31 23:59:59");
+  assert.match(sql, /<= TIMESTAMP '2026-07-31 23:59:59'/);
+  assert.doesNotMatch(sql, />=/);
+});
+
+test("until รูปแบบพัง → ตัดทิ้ง ไม่หลุดเข้า SQL", () => {
+  // ค่ามาจากบรรทัดคำสั่งที่คนพิมพ์เอง จึงต้องกันไม่ให้ประกอบเข้า SQL ตรง ๆ
+  const sql = buildQuery(null, "2026-07-31'; DROP TABLE iclock_transaction; --");
+  assert.doesNotMatch(sql, /DROP TABLE/);
+  assert.doesNotMatch(sql, /WHERE/);
+});
+
 test("query อ่านจากตารางของ ZKBioTime และเรียงจากเก่าไปใหม่", () => {
   const sql = buildQuery(null);
   assert.match(sql, /iclock_transaction/);

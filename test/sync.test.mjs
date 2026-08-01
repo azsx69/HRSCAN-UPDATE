@@ -83,6 +83,24 @@ test("แถวอนาคตไม่ทำให้แถวปกติใ�
   assert.deepEqual(out.map((r) => r.employeeCode), ["001", "003"]);
 });
 
+test("มี until → ตัดแถวที่ใหม่กว่าขอบบนทิ้ง", () => {
+  const rows = [rec("001", 2026, 7, 31, 23, 59, 59), rec("002", 2026, 8, 1, 0, 0, 0)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-07-01", until: "2026-07-31 23:59:59" });
+  assert.deepEqual(out.map((r) => r.employeeCode), ["001"]);
+});
+
+test("ไม่ส่ง until → ไม่มีขอบบน (รอบปกติของ service ต้องไม่เปลี่ยนพฤติกรรม)", () => {
+  const rows = [rec("001", 2026, 7, 27, 9, 0, 0), rec("002", 2026, 7, 28, 9, 0, 0)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01" });
+  assert.equal(out.length, 2);
+});
+
+test("until ที่รูปแบบพัง → ถือว่าไม่มีขอบบน", () => {
+  const rows = [rec("001", 2026, 7, 27, 9, 0, 0)];
+  const out = selectNewRows(rows, { cursor: null, startDate: "2026-01-01", until: "ค่าพัง" });
+  assert.equal(out.length, 1);
+});
+
 test("แถวที่เวลาเท่ากับ now พอดี ยังส่งได้ตามปกติ", () => {
   const now = new Date(2026, 6, 31, 12, 0, 0);
   const rows = [rec("001", 2026, 7, 31, 12, 0, 0)];

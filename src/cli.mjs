@@ -3,6 +3,7 @@
 //   node src\cli.mjs test-source    ทดสอบต่อแหล่งข้อมูลสแกน (เครื่อง ZKTeco หรือฐาน ZKBioTime)
 //   node src\cli.mjs test-supabase  ทดสอบต่อ Supabase
 //   node src\cli.mjs sync-now       สั่ง sync 1 รอบแบบเห็นผลบนจอ
+//   node src\cli.mjs sync-range <ตั้งแต่> <ถึง>   ดึงย้อนหลังตามช่วงวันที่ โดยไม่แตะตัวจำของ service
 // ทุกคำสั่งคืน exit code 0 = สำเร็จ, 1 = ไม่สำเร็จ ให้ .bat เช็คได้
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -11,9 +12,9 @@ import { loadConfig } from "./config.mjs";
 import { createLogger } from "./logger.mjs";
 import { createReader, createTester, describeSource, isBiotime } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
-import { runSync } from "./sync.mjs";
+import { runRange, runSync } from "./sync.mjs";
 import { readState } from "./state.mjs";
-import { toThaiStamp } from "./thaiTime.mjs";
+import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const statePath = path.join(root, "state.json");
@@ -90,6 +91,56 @@ async function syncNow(config) {
   }
 }
 
+// ค่ามาจากคนพิมพ์สด ๆ จึงต้องเข้มกว่าที่ parseThaiStamp ให้: Date จะ normalize วันที่เกินช่วง
+// ให้เงียบ ๆ (2026-13-45 กลายเป็น 2027-02-14) ถ้าปล่อยผ่าน คนพิมพ์ผิดจะได้ข้อมูลคนละช่วงโดยไม่รู้ตัว
+//
+// endOfDay: ขอบบนที่เป็นวันที่ล้วนหมายถึง "ทั้งวันนั้น" ไม่ใช่เที่ยงคืนตรงซึ่งจะได้แค่วินาทีเดียว
+function parseRangeArg(text, { endOfDay = false } = {}) {
+  const at = parseThaiStamp(text);
+  if (!at) return null;
+  const raw = String(text).trim().replace("T", " ");
+  if (toThaiStamp(at).slice(0, raw.length) !== raw) return null;
+  if (endOfDay && raw.length === 10) at.setHours(23, 59, 59);
+  return at;
+}
+
+async function syncRange(config, fromText, toText) {
+  const from = parseRangeArg(fromText);
+  const until = parseRangeArg(toText, { endOfDay: true });
+
+  if (!from || !until) {
+    console.log("ใช้: node src\\cli.mjs sync-range <ตั้งแต่> <ถึง>");
+    console.log("     เช่น node src\\cli.mjs sync-range 2026-07-01 2026-07-31   (รวมข้อมูลทั้งวันที่ 31)");
+    return 1;
+  }
+  if (from > until) {
+    console.log("วันที่เริ่มต้องไม่อยู่หลังวันที่สิ้นสุด");
+    return 1;
+  }
+  if (!isBiotime(config)) {
+    console.log("หมายเหตุ: แหล่งเป็นเครื่องสแกน ต้องหยุด service ก่อน ไม่งั้นต่อเครื่องไม่ติด (เมนูข้อ 5 หยุดให้เอง)");
+  }
+
+  const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
+  try {
+    const client = createClient(config.supabase);
+    const readAttendance = createReader(config);
+    const res = await runRange({
+      config,
+      logger,
+      client,
+      pushRows,
+      readAttendance,
+      from: toThaiStamp(from),
+      until: toThaiStamp(until),
+    });
+    return res.ok ? 0 : 1;
+  } catch (e) {
+    logger.err(`ไม่สำเร็จ: ${e.message}`);
+    return 1;
+  }
+}
+
 async function main() {
   const command = process.argv[2] ?? "status";
   const config = loadConfig(root);
@@ -105,8 +156,11 @@ async function main() {
   if (command === "test-device" || command === "test-source") return checkSource(config);
   if (command === "test-supabase") return checkSupabase(config);
   if (command === "sync-now") return syncNow(config);
+  if (command === "sync-range") return syncRange(config, process.argv[3], process.argv[4]);
 
-  console.log(`ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now`);
+  console.log(
+    `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range`,
+  );
   return 1;
 }
 
