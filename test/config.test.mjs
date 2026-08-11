@@ -138,3 +138,18 @@ test("Store 2 ใช้ IP เครื่อง Jaybon02 โดยไม่ก�
   assert.equal(store1.device.timeoutMs, 10000);
   assert.equal(store1.device.attendancePacketSize, undefined);
 });
+
+test("employee import queue ปิดเป็นค่าเริ่มต้นและเปิดได้เฉพาะ Store 2", () => {
+  const disabled = loadConfig(makeRoot("[branch]\ncode = Store 2\n"));
+  const store2 = loadConfig(makeRoot(
+    "[branch]\ncode = Store 2\nmachine_code = Jaybon02\n[employee_import]\nenabled = true\nbatch_size = 7\n",
+  ));
+  const store1 = loadConfig(makeRoot(
+    "[branch]\ncode = Store 1\n[employee_import]\nenabled = true\n",
+  ));
+  assert.equal(disabled.employeeImport.enabled, false);
+  assert.equal(store2.employeeImport.enabled, true);
+  assert.equal(store2.employeeImport.batchSize, 7);
+  assert.equal(store2.employeeImport.workerId, "Jaybon02");
+  assert.equal(store1.employeeImport.enabled, false);
+});

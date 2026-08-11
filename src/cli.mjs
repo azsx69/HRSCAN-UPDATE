@@ -13,6 +13,7 @@ import { createLogger } from "./logger.mjs";
 import { createReader, createTester, describeSource, isBiotime } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runRange, runSync } from "./sync.mjs";
+import { runEmployeeImportQueue } from "./employeeImport.mjs";
 import { readState } from "./state.mjs";
 import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 
@@ -34,6 +35,7 @@ function showStatus(config) {
   console.log(`สาขา          : ${config.branch.code}${isConfigured() ? "" : "  (ยังไม่ได้ตั้งค่า)"}`);
   console.log(`แหล่งข้อมูล     : ${describeSource(config)}`);
   console.log(`ความถี่        : ทุก ${config.sync.intervalMinutes} นาที`);
+  console.log(`คิวนำเข้าพนักงาน: ${config.employeeImport.enabled ? `เปิด (ครั้งละ ${config.employeeImport.batchSize})` : "ปิด"}`);
   console.log(`เริ่มดึงตั้งแต่   : ${config.sync.startDate || "(ไม่กำหนด)"}`);
   console.log(`สแกนถึง        : ${s.last_scan_at ?? "ยังไม่เคยส่ง"}`);
   console.log(`รันล่าสุด       : ${s.last_run_at ?? "-"}  (${s.last_result ?? "-"})`);
@@ -141,6 +143,30 @@ async function syncRange(config, fromText, toText) {
   }
 }
 
+async function importUsersNow(config) {
+  if (!config.employeeImport.enabled) {
+    console.log("คิวนำเข้าพนักงานยังไม่เปิด — ตั้ง [employee_import] enabled = true (รองรับเฉพาะ Store 2)");
+    return 1;
+  }
+  const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
+  try {
+    const client = createClient(config.supabase);
+    const result = await runEmployeeImportQueue({
+      client,
+      branch: config.branch.code,
+      workerId: config.employeeImport.workerId,
+      limit: config.employeeImport.batchSize,
+      device: config.device,
+      logger,
+    });
+    console.log(`คิวนำเข้า: รับ ${result.claimed} · สำเร็จ ${result.completed} · ไม่สำเร็จ ${result.failed}`);
+    return result.failed === 0 ? 0 : 1;
+  } catch (e) {
+    logger.err(`นำเข้าพนักงานไม่สำเร็จ: ${e.message}`);
+    return 1;
+  }
+}
+
 async function main() {
   const command = process.argv[2] ?? "status";
   const config = loadConfig(root);
@@ -157,9 +183,10 @@ async function main() {
   if (command === "test-supabase") return checkSupabase(config);
   if (command === "sync-now") return syncNow(config);
   if (command === "sync-range") return syncRange(config, process.argv[3], process.argv[4]);
+  if (command === "import-users-now") return importUsersNow(config);
 
   console.log(
-    `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range`,
+    `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range | import-users-now`,
   );
   return 1;
 }

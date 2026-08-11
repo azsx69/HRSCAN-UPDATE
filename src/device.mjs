@@ -13,10 +13,13 @@ const { REQUEST_DATA } = require("node-zklib/constants.js");
 const USER_PACKET_SIZE = 72;
 
 function decodeUserRecord(buf) {
-  const userId = buf.subarray(48, 48 + 9).toString("ascii").split("\0").shift() ?? "";
-  const rawName = buf.subarray(11).toString("latin1").split("\0").shift() ?? "";
+  const uid = buf.readUInt16LE(0);
+  const privilege = buf.readUInt8(2);
+  const userId = buf.subarray(48, 48 + 24).toString("ascii").split("\0").shift() ?? "";
+  const rawName = buf.subarray(11, 11 + 24).toString("latin1").split("\0").shift() ?? "";
   const name = iconv.decode(Buffer.from(rawName, "latin1"), "cp874").trim();
-  return { userId, name };
+  const card = buf.readUInt32LE(35);
+  return { uid, userId, name, privilege, card, rawPacket: Buffer.from(buf) };
 }
 
 function decodeUsersData(data) {

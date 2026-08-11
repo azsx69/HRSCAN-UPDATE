@@ -121,6 +121,27 @@ test("ปฏิเสธ attendance header-only ที่ประกาศว�
   assert.throws(() => decodeAttendanceData("not-a-buffer", { packetSize: 49 }), /Buffer/);
 });
 
+test("อ่าน UID และรหัสพนักงานครบจาก user packet 72 ไบต์", async () => {
+  const packet = Buffer.alloc(72);
+  packet.writeUInt16LE(2, 0);
+  packet.write("TEST 888", 11, "ascii");
+  packet.write("888", 48, "ascii");
+  const data = Buffer.alloc(4 + packet.length);
+  data.writeUInt32LE(packet.length, 0);
+  packet.copy(data, 4);
+  const zk = {
+    connectionType: "tcp",
+    zklibTcp: {
+      freeData: async () => {},
+      readWithBuffer: async () => ({ data, err: null }),
+    },
+  };
+  const rows = await getUsersThai(zk);
+  assert.equal(rows[0].uid, 2);
+  assert.equal(rows[0].userId, "888");
+  assert.equal(rows[0].name, "TEST 888");
+});
+
 test("ปฏิเสธ user buffer ที่ read ไม่ครบและ cleanup buffer", async () => {
   let frees = 0;
   const zk = {

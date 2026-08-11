@@ -22,6 +22,45 @@
 
 เครื่อง MB40-VL ส่ง attendance packet ขนาด 49 ไบต์ ต่างจากเครื่อง K50/ID ของ Store 1 ที่ใช้ 40 ไบต์ โปรแกรมจึงกำหนด raw parser 49 ไบต์เฉพาะ Store 2 ส่วน Store 1 ยังใช้ตัวอ่านเดิมของ `node-zklib` จากนั้นข้อมูลทั้งสองสาขาจะผ่าน payload, cursor, batch และ Supabase upsert ชุดเดียวกัน
 
+### นำเข้าพนักงานจาก Supabase ไปเครื่อง Store 2
+
+ระบบรองรับทิศทางกลับสำหรับ **ข้อมูลพนักงาน** โดยใช้ตารางคิว `device_employee_import_queue`:
+
+```text
+ระบบ HR เพิ่มแถว pending ใน Supabase
+          ↓
+HRSCAN-UPDATE claim งานแบบ atomic **ทีละ 1 รายการ** ด้วย lease + claim token
+          ↓
+เพิ่ม/แก้ไขรหัส ชื่อ และเลขบัตรบน Jaybon02
+          ↓
+อ่านกลับจากเครื่องเพื่อยืนยัน → completed / retry / failed
+```
+
+1. รัน `supabase/migrations/202608110001_create_device_employee_import_queue.sql` ใน Supabase SQL Editor
+2. เพิ่มหมวดนี้ใน `config.ini` ของ Store 2 แล้ว restart service:
+
+```ini
+[employee_import]
+enabled = true
+batch_size = 10
+worker_id = Jaybon02
+```
+
+3. ระบบ HR ฝั่ง backend ที่เก็บ `SUPABASE_SERVICE_KEY` เพิ่มคำขอ (ห้าม insert จาก browser โดยตรง) เช่น:
+
+```sql
+insert into public.device_employee_import_queue
+  (branch, employee_code, employee_name, request_key)
+values
+  ('Store 2', '888', 'ทดสอบ 888', 'employee-888-v1');
+```
+
+`card_number` เป็น optional: ถ้าไม่ส่ง ระบบจะรักษาเลขบัตรเดิมของพนักงานไว้; สำหรับพนักงานใหม่จะใช้ `0` ถ้าต้องการเปลี่ยนบัตรจึงค่อยระบุคอลัมน์นี้
+
+ตรวจผลจาก `status`: `pending` → `processing` → `completed`; ถ้าผิดพลาดจะเป็น `retry` และลองใหม่สูงสุด `max_attempts` ก่อนเป็น `failed` ใช้เมนูข้อ 5 → “นำเข้าพนักงาน” เมื่อต้องการสั่งทันที (เมนูจะหยุด service ชั่วคราวเพื่อไม่ให้แย่งการเชื่อมต่อเครื่อง) โดยปกติ service ตรวจคิวให้อัตโนมัติ
+
+> คิวนี้เพิ่ม/แก้ไขเฉพาะโปรไฟล์พนักงาน ไม่เก็บและไม่ส่งแม่แบบลายนิ้วมือหรือใบหน้า พนักงานใหม่ต้องลงทะเบียนชีวมิติที่หน้าเครื่องภายหลัง และระบบจะไม่ลบผู้ใช้จากคำสั่งในคิวนี้
+
 ## ติดตั้งที่สาขา
 
 เปิด **CMD** ที่เครื่องของสาขาแล้ววางคำสั่งนี้

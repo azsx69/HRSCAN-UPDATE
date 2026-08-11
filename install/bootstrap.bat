@@ -30,6 +30,7 @@ set "CUR_PORT=4370"
 set "CUR_INTERVAL=5"
 set "CUR_START=2026-01-01"
 set "CUR_SOURCE=device"
+set "CUR_IMPORT=false"
 set "CUR_PSQL=C:\ZKBioTime\pgsql\bin\psql.exe"
 set "CUR_DB=biotime"
 REM ตัวอ่านนี้ไม่แยกหมวด จึงใช้ค่าแรกที่เจอสำหรับคีย์ที่ซ้ำกันข้ามหมวด (port มีทั้ง [device] และ [biotime])
@@ -47,6 +48,7 @@ for /f "usebackq tokens=1,* delims==" %%A in ("config.ini") do (
     if /i "!K!"=="database" set "CUR_DB=!V!"
     if /i "!K!"=="interval_minutes" set "CUR_INTERVAL=!V!"
     if /i "!K!"=="start_date" set "CUR_START=!V!"
+    if /i "!K!"=="enabled" set "CUR_IMPORT=!V!"
 )
 
 echo --- สาขา ---
@@ -95,10 +97,20 @@ set /p "INTERVAL=ความถี่ sync เป็นนาที [!CUR_INTER
 set "START_DATE=!CUR_START!"
 set /p "START_DATE=เริ่มดึงข้อมูลตั้งแต่วันที่ YYYY-MM-DD [!CUR_START!]: "
 
+set "IMPORT_ENABLED=false"
+if /i "!BRANCH!"=="Store 2" (
+    echo.
+    echo --- นำเข้าพนักงานจาก Supabase ไปเครื่อง Store 2 ---
+    echo   ต้องติดตั้ง SQL migration ใน Supabase ก่อนเปิด
+    set "IMPORT_ENABLED=!CUR_IMPORT!"
+    set /p "IMPORT_ENABLED=เปิดคิวนำเข้าพนักงาน? true/false [!CUR_IMPORT!]: "
+)
+
 node install\patch-config.mjs config.ini ^
     "branch.code=!BRANCH!" "branch.machine_code=!MACHINE!" ^
     "source.type=!SRC_TYPE!" ^
-    "sync.interval_minutes=!INTERVAL!" "sync.start_date=!START_DATE!"
+    "sync.interval_minutes=!INTERVAL!" "sync.start_date=!START_DATE!" ^
+    "employee_import.enabled=!IMPORT_ENABLED!"
 if errorlevel 1 ( echo  [x] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
 
 REM เขียนเฉพาะค่าของแหล่งที่เลือก — ค่าของอีกแหล่งคงไว้เผื่อสลับกลับ
