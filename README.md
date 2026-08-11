@@ -22,29 +22,33 @@
 
 เครื่อง MB40-VL ส่ง attendance packet ขนาด 49 ไบต์ ต่างจากเครื่อง K50/ID ของ Store 1 ที่ใช้ 40 ไบต์ โปรแกรมจึงกำหนด raw parser 49 ไบต์เฉพาะ Store 2 ส่วน Store 1 ยังใช้ตัวอ่านเดิมของ `node-zklib` จากนั้นข้อมูลทั้งสองสาขาจะผ่าน payload, cursor, batch และ Supabase upsert ชุดเดียวกัน
 
-### นำเข้าพนักงานจาก Supabase ไปเครื่อง Store 2
+### นำเข้าพนักงานจาก Supabase ไปเครื่องสแกนของสาขา
 
-ระบบรองรับทิศทางกลับสำหรับ **ข้อมูลพนักงาน** โดยใช้ตารางคิว `device_employee_import_queue`:
+ระบบรองรับทิศทางกลับสำหรับ **ข้อมูลพนักงาน** โดยใช้ตารางคิว `device_employee_import_queue` — ใช้ได้ทุกสาขา `Store 1` ถึง `Store 5`:
 
 ```text
-ระบบ HR เพิ่มแถว pending ใน Supabase
+ระบบ HR เพิ่มแถว pending ใน Supabase (ระบุสาขาปลายทาง)
           ↓
-HRSCAN-UPDATE claim งานแบบ atomic **ทีละ 1 รายการ** ด้วย lease + claim token
+HRSCAN-UPDATE ของสาขานั้น claim งานแบบ atomic **ทีละ 1 รายการ** ด้วย lease + claim token
           ↓
-เพิ่ม/แก้ไขรหัส ชื่อ และเลขบัตรบน Jaybon02
+เพิ่ม/แก้ไขรหัส ชื่อ และเลขบัตรบนเครื่องสแกนของสาขา
           ↓
 อ่านกลับจากเครื่องเพื่อยืนยัน → completed / retry / failed
 ```
 
+แต่ละสาขาล็อกแยกกัน (advisory lock ต่อสาขา) สาขาที่งานค้างจึงไม่บล็อกสาขาอื่น
+
 1. รัน `supabase/migrations/202608110001_create_device_employee_import_queue.sql` ใน Supabase SQL Editor
-2. เพิ่มหมวดนี้ใน `config.ini` ของ Store 2 แล้ว restart service:
+2. เพิ่มหมวดนี้ใน `config.ini` ของสาขาที่ต้องการ แล้ว restart service:
 
 ```ini
 [employee_import]
 enabled = true
 batch_size = 10
-worker_id = Jaybon02
+; ไม่ตั้ง worker_id = ใช้ machine_code ของสาขาแทน
 ```
+
+> เปิดได้เฉพาะสาขาที่ `[source] type = device` เท่านั้น — สาขาที่ใช้ ZKBioTime จะเขียนลงเครื่องไม่ผ่าน เพราะโปรแกรมนั้นยึดการเชื่อมต่อเครื่องไว้ตลอด งานจะ retry จนกลายเป็น `failed`
 
 3. ระบบ HR ฝั่ง backend ที่เก็บ `SUPABASE_SERVICE_KEY` เพิ่มคำขอ (ห้าม insert จาก browser โดยตรง) เช่น:
 
@@ -54,6 +58,10 @@ insert into public.device_employee_import_queue
 values
   ('Store 2', '888', 'ทดสอบ 888', 'employee-888-v1');
 ```
+
+ต้องระบุ `branch` ทุกครั้ง — คอลัมน์นี้ไม่มีค่า default แล้ว เพราะค่า default จะพางานไปลงเครื่องผิดสาขาแบบเงียบ ๆ เมื่อผู้เรียกลืมใส่
+
+`request_key` ต้องไม่ซ้ำและควรมีเลขรุ่นต่อท้าย (`-v1`, `-v2`) — ส่งค่าเดิมซ้ำจะไม่เกิดงานใหม่ ซึ่งเป็นตัวกันสั่งซ้ำ แต่แปลว่าการแก้ชื่อคนเดิมครั้งถัดไปต้องใช้ key ใหม่
 
 `card_number` เป็น optional: ถ้าไม่ส่ง ระบบจะรักษาเลขบัตรเดิมของพนักงานไว้; สำหรับพนักงานใหม่จะใช้ `0` ถ้าต้องการเปลี่ยนบัตรจึงค่อยระบุคอลัมน์นี้
 

@@ -1,4 +1,4 @@
-// Queue Supabase -> employee profile บนเครื่องสแกน Store 2
+// Queue Supabase -> employee profile บนเครื่องสแกนของสาขา
 // Claim ทีละงานและใช้ UUID claim token เพื่อกัน stale worker ปิดงานของ worker ใหม่
 import { importEmployeeToDevice } from "./deviceUsers.mjs";
 
@@ -7,10 +7,28 @@ const COMPLETE_RPC = "complete_device_employee_import_job";
 const FAIL_RPC = "fail_device_employee_import_job";
 const RENEW_RPC = "renew_device_employee_import_lease";
 
+const SUPPORTED_BRANCHES = new Set(["Store 1", "Store 2", "Store 3", "Store 4", "Store 5"]);
+
+// config.ini ของแต่ละสาขาพิมพ์ด้วยมือ จึงเจอ "store 2" หรือ "Store  2" ได้
+// ต้องปรับให้ตรงกับค่าที่ HR ใช้ก่อนส่งเข้า RPC ไม่งั้น claim ไม่เจองานทั้งที่ตั้งค่าไว้ถูกความหมายแล้ว
+export function canonicalBranch(branch) {
+  const text = String(branch ?? "").trim().replace(/\s+/g, " ");
+  const match = text.match(/^store (\d+)$/i);
+  return match ? `Store ${match[1]}` : text;
+}
+
+// สาขาที่ตั้งรหัสผิดต้องดังออกมาใน log ไม่ใช่เงียบเหมือนคิวว่างไปตลอด
+function requireSupportedBranch(branch) {
+  const code = canonicalBranch(branch);
+  if (!SUPPORTED_BRANCHES.has(code)) {
+    throw new Error(`สาขา "${branch}" ไม่รองรับคิวนำเข้าพนักงาน — ต้องเป็น Store 1 ถึง Store 5`);
+  }
+  return code;
+}
+
 export async function claimEmployeeImports(client, { branch, workerId }) {
-  if (String(branch).trim().toLowerCase() !== "store 2") return [];
   const { data, error } = await client.rpc(CLAIM_RPC, {
-    p_branch: "Store 2",
+    p_branch: requireSupportedBranch(branch),
     p_worker_id: workerId,
     p_limit: 1,
   });
@@ -61,17 +79,14 @@ export async function runEmployeeImportQueue({
   completeJob = completeEmployeeImport,
   failJob = failEmployeeImport,
 }) {
-  if (String(branch).trim().toLowerCase() !== "store 2") {
-    return { claimed: 0, completed: 0, failed: 0 };
-  }
-
+  const branchCode = requireSupportedBranch(branch);
   const maxJobs = Math.max(1, Math.min(Number(limit) || 1, 100));
   let claimed = 0;
   let completed = 0;
   let failed = 0;
 
   for (let index = 0; index < maxJobs; index++) {
-    const jobs = await claimJobs(client, { branch: "Store 2", workerId, limit: 1 });
+    const jobs = await claimJobs(client, { branch: branchCode, workerId, limit: 1 });
     const job = jobs[0];
     if (!job) break;
     claimed++;

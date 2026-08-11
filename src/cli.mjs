@@ -145,7 +145,7 @@ async function syncRange(config, fromText, toText) {
 
 async function importUsersNow(config) {
   if (!config.employeeImport.enabled) {
-    console.log("คิวนำเข้าพนักงานยังไม่เปิด — ตั้ง [employee_import] enabled = true (รองรับเฉพาะ Store 2)");
+    console.log("คิวนำเข้าพนักงานยังไม่เปิด — ตั้ง [employee_import] enabled = true ใน config.ini ของสาขานี้");
     return 1;
   }
   const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });

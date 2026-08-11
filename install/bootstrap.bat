@@ -97,14 +97,12 @@ set /p "INTERVAL=ความถี่ sync เป็นนาที [!CUR_INTER
 set "START_DATE=!CUR_START!"
 set /p "START_DATE=เริ่มดึงข้อมูลตั้งแต่วันที่ YYYY-MM-DD [!CUR_START!]: "
 
-set "IMPORT_ENABLED=false"
-if /i "!BRANCH!"=="Store 2" (
-    echo.
-    echo --- นำเข้าพนักงานจาก Supabase ไปเครื่อง Store 2 ---
-    echo   ต้องติดตั้ง SQL migration ใน Supabase ก่อนเปิด
-    set "IMPORT_ENABLED=!CUR_IMPORT!"
-    set /p "IMPORT_ENABLED=เปิดคิวนำเข้าพนักงาน? true/false [!CUR_IMPORT!]: "
-)
+echo.
+echo --- นำเข้าพนักงานจาก Supabase ไปเครื่องสแกนของสาขานี้ ---
+echo   ต้องติดตั้ง SQL migration ใน Supabase ก่อนเปิด
+echo   เปิดได้เฉพาะสาขาที่ต่อเครื่องสแกนตรง (ZKBioTime ยึดการเชื่อมต่อไว้ ใช้ร่วมกันไม่ได้)
+set "IMPORT_ENABLED=!CUR_IMPORT!"
+set /p "IMPORT_ENABLED=เปิดคิวนำเข้าพนักงาน? true/false [!CUR_IMPORT!]: "
 
 node install\patch-config.mjs config.ini ^
     "branch.code=!BRANCH!" "branch.machine_code=!MACHINE!" ^

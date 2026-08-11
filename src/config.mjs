@@ -84,10 +84,10 @@ export function loadConfig(root = process.cwd()) {
       batchSize: num("sync", "batch_size", 500),
     },
     employeeImport: {
-      // ปิดไว้จนกว่าจะติดตั้ง SQL migration ใน Supabase แล้วจึงเปิดเฉพาะ Store 2
-      enabled: isStore2 && cfg("employee_import", "enabled", "false").toLowerCase() === "true",
+      // ปิดไว้จนกว่าจะติดตั้ง SQL migration ใน Supabase แล้วจึงเปิดเป็นรายสาขา (Store 1-5)
+      enabled: cfg("employee_import", "enabled", "false").toLowerCase() === "true",
       batchSize: num("employee_import", "batch_size", 10),
-      workerId: cfg("employee_import", "worker_id", cfg("branch", "machine_code", "Jaybon02")),
+      workerId: cfg("employee_import", "worker_id", cfg("branch", "machine_code", branchCode)),
     },
     log: {
       keepDays: num("log", "keep_days", 30),

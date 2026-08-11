@@ -1,9 +1,11 @@
--- Supabase queue: trusted HR backend -> ZKTeco employee profile at Store 2
+-- Supabase queue: trusted HR backend -> ZKTeco employee profile at a branch terminal (Store 1..Store 5)
 -- Apply in Supabase SQL Editor before enabling [employee_import] in config.ini.
 
 create table if not exists public.device_employee_import_queue (
   id uuid primary key default gen_random_uuid(),
-  branch text not null default 'Store 2' check (branch = 'Store 2'),
+  -- No default on purpose: a default branch sends jobs to the wrong physical terminal whenever
+  -- the caller forgets the column, and nothing about the queue looks broken while it happens.
+  branch text not null check (branch in ('Store 1', 'Store 2', 'Store 3', 'Store 4', 'Store 5')),
   employee_code varchar(24) not null check (employee_code ~ '^[A-Za-z0-9_-]{1,24}$'),
   employee_name text not null check (char_length(btrim(employee_name)) between 1 and 24),
   -- NULL means preserve the existing card; a new user receives card 0.
@@ -53,8 +55,8 @@ create trigger trg_device_employee_import_queue_updated_at
 before update on public.device_employee_import_queue
 for each row execute function public.touch_device_employee_import_queue_updated_at();
 
--- Global Store 2 terminal lease + atomic claim. Advisory lock serializes concurrent claim RPCs.
--- Only one queue job can own the physical terminal at a time, and every claim has a fresh token.
+-- Per-branch terminal lease + atomic claim. Advisory lock serializes concurrent claim RPCs.
+-- Only one queue job can own a given branch's terminal at a time, and every claim has a fresh token.
 create or replace function public.claim_device_employee_import_jobs(
   p_branch text,
   p_worker_id text,
@@ -65,13 +67,21 @@ language plpgsql
 security definer
 set search_path = pg_catalog, public, pg_temp
 as $$
+declare
+  v_branch text := btrim(coalesce(p_branch, ''));
 begin
-  if p_branch <> 'Store 2' then return; end if;
+  -- Raise instead of returning empty: a typo in a branch config.ini must be loud in that branch's
+  -- log, not look like an idle queue forever.
+  if v_branch not in ('Store 1', 'Store 2', 'Store 3', 'Store 4', 'Store 5') then
+    raise exception 'unsupported branch %', coalesce(p_branch, '(null)');
+  end if;
   if nullif(btrim(p_worker_id), '') is null then
     raise exception 'worker id is required';
   end if;
 
-  perform pg_advisory_xact_lock(hashtextextended('HRSCAN:Store 2:employee import', 0));
+  -- One lock per branch: each branch owns a different physical terminal, so a busy branch must not
+  -- block the others the way a single global lock would.
+  perform pg_advisory_xact_lock(hashtextextended('HRSCAN:' || v_branch || ':employee import', 0));
 
   -- An expired final attempt must not remain processing forever.
   update public.device_employee_import_queue q
@@ -82,15 +92,15 @@ begin
          lease_expires_at = null,
          locked_by = null,
          claim_token = null
-   where q.branch = 'Store 2'
+   where q.branch = v_branch
      and q.status = 'processing'
      and q.lease_expires_at < now()
      and q.attempts >= q.max_attempts;
 
-  -- Do not claim another row while any valid Store 2 terminal lease exists.
+  -- Do not claim another row while any valid lease exists for this branch's terminal.
   if exists (
     select 1 from public.device_employee_import_queue q
-     where q.branch = 'Store 2'
+     where q.branch = v_branch
        and q.status = 'processing'
        and q.lease_expires_at >= now()
   ) then
@@ -101,7 +111,7 @@ begin
   with candidate as (
     select q.id
       from public.device_employee_import_queue q
-     where q.branch = 'Store 2'
+     where q.branch = v_branch
        and q.attempts < q.max_attempts
        and (
          (q.status in ('pending', 'retry') and q.available_at <= now())
@@ -232,6 +242,8 @@ grant execute on function public.complete_device_employee_import_job(uuid, uuid,
 grant execute on function public.fail_device_employee_import_job(uuid, uuid, text) to service_role;
 
 comment on table public.device_employee_import_queue is
-  'Leased queue of employee profiles to upsert into the Store 2 ZKTeco terminal; biometric templates are not stored here.';
+  'Leased queue of employee profiles to upsert into a branch ZKTeco terminal (Store 1..Store 5); biometric templates are not stored here.';
+comment on column public.device_employee_import_queue.branch is
+  'Target branch terminal; required on every row because there is deliberately no default.';
 comment on column public.device_employee_import_queue.request_key is
   'Producer event/revision idempotency key; do not use employee_code alone because later updates need new jobs.';

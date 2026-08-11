@@ -1,0 +1,25 @@
+-- ทดสอบคิวนำเข้าพนักงาน: สั่งเพิ่มรหัส 888 เข้าเครื่องสแกนของ Store 1, 3, 4 และ 5
+-- รันใน Supabase SQL Editor หลังรัน migration ใน supabase/migrations แล้ว
+--
+-- ไม่แตะลายนิ้วมือหรือใบหน้า — สร้างเฉพาะโปรไฟล์ (รหัส/ชื่อ/เลขบัตร) บนเครื่อง
+-- ถ้ารหัส 888 มีอยู่แล้วในเครื่อง ระบบจะแก้ชื่อของ uid เดิม ไม่สร้างซ้ำ
+
+insert into public.device_employee_import_queue
+  (branch, employee_code, employee_name, request_key)
+values
+  ('Store 1', '888', 'ทดสอบ 888', 'test-888-store1-v1'),
+  ('Store 3', '888', 'ทดสอบ 888', 'test-888-store3-v1'),
+  ('Store 4', '888', 'ทดสอบ 888', 'test-888-store4-v1'),
+  ('Store 5', '888', 'ทดสอบ 888', 'test-888-store5-v1');
+
+-- ดูผลหลังจากนั้น: pending -> processing -> completed
+-- ถ้าเป็น retry/failed ให้ดู last_error (เช่น ต่อเครื่องไม่ได้ หรือ ZKBioTime ยึดการเชื่อมต่ออยู่)
+select branch, employee_code, status, attempts, device_uid, last_error, updated_at
+  from public.device_employee_import_queue
+ where employee_code = '888'
+ order by branch;
+
+-- ยกเลิกงานที่ยังไม่ทำ (ถ้าต้องการหยุดกลางคัน)
+-- update public.device_employee_import_queue
+--    set status = 'cancelled', processed_at = now()
+--  where employee_code = '888' and status in ('pending', 'retry');

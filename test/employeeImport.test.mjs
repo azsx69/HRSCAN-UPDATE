@@ -146,12 +146,25 @@ test("complete RPC ล้มหลังเขียนเครื่องส�
   assert.equal(failed, false);
 });
 
-test("สาขาอื่นไม่ claim งาน Store 2", async () => {
+test("ทุกสาขา claim เฉพาะงานของสาขาตัวเอง", async () => {
+  const asked = [];
+  for (const branch of ["Store 1", "store 3", "Store  4", "Store 5"]) {
+    await runEmployeeImportQueue({
+      client: {}, branch, workerId: "fp-01", limit: 10,
+      claimJobs: async (_client, options) => { asked.push(options.branch); return []; },
+    });
+  }
+  assert.deepEqual(asked, ["Store 1", "Store 3", "Store 4", "Store 5"]);
+});
+
+test("สาขานอกรายการต้อง throw ไม่ใช่เงียบเหมือนคิวว่าง", async () => {
   let called = false;
-  const result = await runEmployeeImportQueue({
-    client: {}, branch: "Store 1", workerId: "fp-01", limit: 10,
-    claimJobs: async () => { called = true; return []; },
-  });
+  await assert.rejects(
+    () => runEmployeeImportQueue({
+      client: {}, branch: "Store 9", workerId: "fp-09", limit: 10,
+      claimJobs: async () => { called = true; return []; },
+    }),
+    /ไม่รองรับคิวนำเข้าพนักงาน/,
+  );
   assert.equal(called, false);
-  assert.deepEqual(result, { claimed: 0, completed: 0, failed: 0 });
 });
