@@ -14,6 +14,7 @@ import { createReader, createTester, describeSource, isBiotime } from "./source.
 import { createClient, pushRows } from "./supabase.mjs";
 import { runRange, runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
+import { acquireDeviceLock } from "./lock.mjs";
 import { readState } from "./state.mjs";
 import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 
@@ -178,12 +179,32 @@ async function main() {
     return 1;
   }
 
-  // test-source เป็นชื่อที่ตรงกว่าเมื่อสาขาอ่านจากฐาน ZKBioTime — คง test-device ไว้ให้สคริปต์เดิมเรียกได้
-  if (command === "test-device" || command === "test-source") return checkSource(config);
   if (command === "test-supabase") return checkSupabase(config);
-  if (command === "sync-now") return syncNow(config);
-  if (command === "sync-range") return syncRange(config, process.argv[3], process.argv[4]);
-  if (command === "import-users-now") return importUsersNow(config);
+
+  // คำสั่งที่ต้องคุยกับเครื่องสแกน ต้องถือล็อกก่อน ไม่งั้นชนกับรอบของ service แล้วต่อไม่ติดทั้งคู่
+  // (เมนูหยุด service ให้อยู่แล้ว ล็อกนี้ไว้กันคนที่พิมพ์คำสั่งเองจาก CMD)
+  const deviceCommands = {
+    "test-device": () => checkSource(config),
+    "test-source": () => checkSource(config),
+    "sync-now": () => syncNow(config),
+    "sync-range": () => syncRange(config, process.argv[3], process.argv[4]),
+    "import-users-now": () => importUsersNow(config),
+  };
+  if (deviceCommands[command]) {
+    let release;
+    try {
+      release = acquireDeviceLock(path.join(root, ".sync.lock"), { owner: `cli ${command}` });
+    } catch (e) {
+      // แยกจาก error ของตัวคำสั่งเอง เพื่อไม่ให้ "ต่อเครื่องไม่ได้" ถูกรายงานว่าเป็นเรื่องล็อก
+      console.log(`  [x] ${e.message}`);
+      return 1;
+    }
+    try {
+      return await deviceCommands[command]();
+    } finally {
+      release();
+    }
+  }
 
   console.log(
     `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range | import-users-now`,

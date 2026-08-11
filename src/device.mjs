@@ -55,7 +55,8 @@ export async function getUsersThai(zk) {
 }
 
 // รหัสพนักงานในระบบ HR เป็นเลข 3 หลัก แต่เครื่องเก็บเป็น "1" บ้าง "001" บ้าง
-function padEmployeeCode(id) {
+// export เพราะ deviceUsers ต้องใช้กติกาเดียวกันตัดสินว่าการเขียนทับรหัสบนเครื่องเปลี่ยนค่าที่ HR เห็นหรือไม่
+export function padEmployeeCode(id) {
   return /^\d+$/.test(id) ? id.padStart(3, "0") : id;
 }
 

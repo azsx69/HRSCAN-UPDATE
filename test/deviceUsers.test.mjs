@@ -71,12 +71,14 @@ test("รหัส canonical ซ้ำหลายบัญชีต้องห
   );
 });
 
-test("พนักงานใหม่ใช้ UID ว่างตัวแรกโดยไม่ชนผู้ใช้เดิม", () => {
+test("พนักงานใหม่ใช้ UID ถัดจากตัวสูงสุด ไม่เอาช่องว่างที่คนถูกลบทิ้งไว้มาใช้ซ้ำ", () => {
+  // uid 3 ว่างเพราะเคยมีคนถูกลบ — เครื่องบางรุ่นไม่ลบแม่แบบลายนิ้วมือตามผู้ใช้
+  // เอา uid นั้นมาใช้ซ้ำ = คนใหม่สแกนด้วยนิ้วของคนเก่าได้โดยไม่มีใครรู้
   const plan = planEmployeeUpsert(
     [decoded(rawUser({ uid: 1, code: "201" })), decoded(rawUser({ uid: 2, code: "888" })), decoded(rawUser({ uid: 4, code: "202" }))],
     { employee_code: "999", employee_name: "คนใหม่" },
   );
-  assert.equal(plan.uid, 3);
+  assert.equal(plan.uid, 5);
   assert.equal(plan.created, true);
 });
 
@@ -89,6 +91,24 @@ test("รหัสตัวเลขที่ต่างกันเฉพา�
   assert.equal(plan.created, false);
 });
 
+test("เขียนทับรหัสได้เฉพาะเมื่อค่าที่ HR เห็นไม่เปลี่ยน", () => {
+  // "1" กับ "001" ผ่าน padEmployeeCode แล้วได้ "001" เท่ากัน — log เก่ากับใหม่ยังเป็นคนเดียวกัน
+  const ok = planEmployeeUpsert(
+    [decoded(rawUser({ uid: 7, code: "1" }))],
+    { employee_code: "001", employee_name: "ชื่อใหม่" },
+  );
+  assert.equal(ok.employeeCode, "001");
+
+  // "0888" pad แล้วยังเป็น "0888" ไม่เท่ากับ "888" — เขียนทับจะทำให้ประวัติแยกเป็นสองรหัส
+  assert.throws(
+    () => planEmployeeUpsert(
+      [decoded(rawUser({ uid: 7, code: "0888" }))],
+      { employee_code: "888", employee_name: "ชื่อใหม่" },
+    ),
+    /ประวัติการสแกนแยกเป็นสองรหัส/,
+  );
+});
+
 test("ปฏิเสธรหัสพนักงานที่ไม่ปลอดภัยก่อนส่งคำสั่งเข้าเครื่อง", () => {
   assert.throws(
     () => planEmployeeUpsert([], { employee_code: "888\nBAD", employee_name: "x" }),
@@ -98,7 +118,7 @@ test("ปฏิเสธรหัสพนักงานที่ไม่ป�
 
 test("ปฏิเสธชื่อที่ CP874 เข้ารหัสแบบ lossless ไม่ได้ก่อนส่งคำสั่ง", async () => {
   let wrote = false;
-  const zk = { connectionType: "tcp", executeCmd: async () => { wrote = true; } };
+  const zk = { connectionType: "tcp", executeCmd: async () => { wrote = true; }, disableDevice: async () => {}, enableDevice: async () => {} };
   await assert.rejects(
     () => writeEmployeeToConnectedDevice(
       zk,
@@ -115,22 +135,67 @@ test("อ่านกลับต้องยืนยัน UID ชื่อ co
   let reads = 0;
   const beforePacket = rawUser({ uid: 2, privilege: 3, password: "pw", name: "เดิม", card: 55, code: "888" });
   const afterPacket = rawUser({ uid: 2, privilege: 3, password: "pw", name: "ทดสอบ 888", card: 1234, code: "888" });
-  const zk = { connectionType: "tcp", executeCmd: async (command, data) => { commands.push({ command, data }); } };
+  const zk = {
+    connectionType: "tcp",
+    executeCmd: async (command, data) => { commands.push({ command, data }); },
+    disableDevice: async () => { commands.push({ command: "disable" }); },
+    enableDevice: async () => { commands.push({ command: "enable" }); },
+  };
   const result = await writeEmployeeToConnectedDevice(
     zk,
     { employee_code: "888", employee_name: "ทดสอบ 888", card_number: 1234 },
     { readUsers: async () => decoded(++reads === 1 ? beforePacket : afterPacket) ? [decoded(reads === 1 ? beforePacket : afterPacket)] : [] },
   );
-  assert.equal(commands[0].command, 8);
-  assert.equal(commands[1].command, 1013);
+  // ต้องล็อกเครื่องก่อนเขียนและปลดหลังเขียนเสมอ ไม่งั้นคนที่แตะนิ้วพอดีจะทำให้คำสั่งเขียนพลาด
+  assert.deepEqual(commands.map((c) => c.command), ["disable", 8, 1013, "enable"]);
   assert.deepEqual(result, { deviceUid: 2, created: false, verifiedName: "ทดสอบ 888" });
+});
+
+test("เขียนล้มต้องปลดล็อกเครื่องคืนเสมอ ไม่ปล่อยให้ทั้งสาขาสแกนไม่ได้", async () => {
+  const commands = [];
+  const zk = {
+    connectionType: "tcp",
+    executeCmd: async () => { commands.push("write"); throw new Error("เครื่องไม่ตอบ"); },
+    disableDevice: async () => { commands.push("disable"); },
+    enableDevice: async () => { commands.push("enable"); },
+  };
+  await assert.rejects(
+    () => writeEmployeeToConnectedDevice(
+      zk,
+      { employee_code: "888", employee_name: "ทดสอบ 888" },
+      { readUsers: async () => [decoded(rawUser({ uid: 2, code: "888" }))] },
+    ),
+    /เครื่องไม่ตอบ/,
+  );
+  assert.deepEqual(commands, ["disable", "write", "enable"]);
+});
+
+test("เครื่องที่เก็บรหัสแบบตัดศูนย์นำหน้า ต้องยืนยันผ่าน ไม่ใช่รายงานว่าเขียนไม่สำเร็จ", async () => {
+  // ส่ง "001" ไป แต่เครื่องอ่านกลับมาเป็น "1" — เทียบตรงตัวจะสรุปผิดว่าเขียนไม่เข้า
+  let reads = 0;
+  const zk = {
+    connectionType: "tcp",
+    executeCmd: async () => {},
+    disableDevice: async () => {},
+    enableDevice: async () => {},
+  };
+  const result = await writeEmployeeToConnectedDevice(
+    zk,
+    { employee_code: "001", employee_name: "ชื่อใหม่" },
+    {
+      readUsers: async () => [
+        decoded(rawUser({ uid: 7, code: "1", name: ++reads === 1 ? "เดิม" : "ชื่อใหม่" })),
+      ],
+    },
+  );
+  assert.equal(result.deviceUid, 7);
 });
 
 test("UID หรือ card ที่อ่านกลับผิดต้องไม่ mark สำเร็จ", async () => {
   let reads = 0;
   const before = decoded(rawUser({ uid: 2, code: "888", card: 10 }));
   const wrong = decoded(rawUser({ uid: 3, code: "888", card: 99, name: "ใหม่" }));
-  const zk = { connectionType: "tcp", executeCmd: async () => {} };
+  const zk = { connectionType: "tcp", executeCmd: async () => {}, disableDevice: async () => {}, enableDevice: async () => {} };
   await assert.rejects(
     () => writeEmployeeToConnectedDevice(
       zk,

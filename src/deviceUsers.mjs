@@ -3,7 +3,7 @@
 import { createRequire } from "node:module";
 import iconv from "iconv-lite";
 import ZKLib from "node-zklib";
-import { getUsersThai } from "./device.mjs";
+import { getUsersThai, padEmployeeCode } from "./device.mjs";
 
 const require = createRequire(import.meta.url);
 const { COMMANDS } = require("node-zklib/constants.js");
@@ -55,6 +55,16 @@ export function planEmployeeUpsert(users, row) {
     if (!Buffer.isBuffer(existing.rawPacket) || existing.rawPacket.length !== USER_PACKET_SIZE) {
       throw new Error("ข้อมูลพนักงานเดิมไม่ใช่ TCP user packet 72 ไบต์ จึงไม่อนุญาตให้อัปเดต");
     }
+    // เขียนทับ byte 48-71 = เปลี่ยนรหัสบนเครื่อง ซึ่งเปลี่ยน employee_code ของ log ที่ส่งขึ้น Supabase ตามไปด้วย
+    // ยอมได้เฉพาะกรณีที่ padEmployeeCode ให้ผลเท่ากัน (เช่น "1" -> "001" ซึ่ง HR เห็นเป็นค่าเดิมอยู่แล้ว)
+    // ต่างกันเมื่อไหร่แปลว่าประวัติการสแกนของคนนี้จะขาดเป็นสองรหัส — ต้องให้คนตัดสิน ไม่ใช่เขียนทับเงียบ ๆ
+    const deviceCode = String(existing.userId ?? "").trim();
+    if (padEmployeeCode(deviceCode) !== padEmployeeCode(employee.employeeCode)) {
+      throw new Error(
+        `เครื่องเก็บรหัสนี้เป็น "${deviceCode}" แต่คิวส่ง "${employee.employeeCode}" — ` +
+          "เขียนทับจะทำให้ประวัติการสแกนแยกเป็นสองรหัส ให้แก้รหัสในทะเบียน HR ให้ตรงกับเครื่องก่อน",
+      );
+    }
     return {
       uid: Number(existing.uid),
       ...employee,
@@ -65,9 +75,10 @@ export function planEmployeeUpsert(users, row) {
     };
   }
 
-  const used = new Set(users.map((u) => Number(u.uid)).filter(Number.isInteger));
-  let uid = 1;
-  while (used.has(uid)) uid++;
+  // ใช้ max+1 ไม่ใช่เลขว่างต่ำสุด — uid ของคนที่ถูกลบไปอาจยังมีแม่แบบลายนิ้วมือค้างอยู่ในเครื่อง
+  // ถ้าเอา uid นั้นมาใช้ซ้ำ พนักงานใหม่จะสแกนด้วยนิ้วของคนเก่าได้โดยไม่มีใครรู้
+  const used = users.map((u) => Number(u.uid)).filter(Number.isInteger);
+  const uid = Math.max(0, ...used) + 1;
   if (uid > 65535) throw new Error("ไม่มี UID ว่างในเครื่อง ZKTeco");
   return {
     uid,
@@ -104,11 +115,29 @@ export async function writeEmployeeToConnectedDevice(zk, row, { readUsers = getU
   const plan = planEmployeeUpsert(before, row);
   const packet = encodeUserPacket(plan);
 
-  await zk.executeCmd(COMMANDS.CMD_USER_WRQ, packet);
-  await zk.executeCmd(COMMANDS.CMD_REFRESHDATA, Buffer.alloc(0));
+  // ล็อกเครื่องระหว่างเขียน — ถ้ามีคนแตะนิ้วพอดี เครื่องบางรุ่นจะปฏิเสธคำสั่งหรือเขียนไม่ครบ
+  // ต้องปลดล็อกคืนเสมอ ปล่อยค้างไว้แปลว่าพนักงานทั้งสาขาสแกนไม่ได้
+  await zk.disableDevice();
+  let failure = null;
+  try {
+    await zk.executeCmd(COMMANDS.CMD_USER_WRQ, packet);
+    await zk.executeCmd(COMMANDS.CMD_REFRESHDATA, Buffer.alloc(0));
+  } catch (e) {
+    failure = e;
+  }
+  try {
+    await zk.enableDevice();
+  } catch (e) {
+    // ใช้ finally ตรง ๆ ไม่ได้ — error ตอนปลดล็อกจะกลบสาเหตุจริงที่ทำให้เขียนไม่ผ่าน
+    failure ??= new Error(`เขียนสำเร็จแต่ปลดล็อกเครื่องไม่ได้ (${e.message}) — ต้องรีสตาร์ทเครื่องสแกน`);
+  }
+  if (failure) throw failure;
 
   const after = await readUsers(zk);
-  const verified = after.find((u) => String(u.userId).trim() === plan.employeeCode);
+  // เทียบแบบ canonical ให้ตรงกับตอนจับคู่ — เครื่องบางรุ่นเก็บ "001" ที่ส่งไปเป็น "1"
+  // ถ้าเทียบตรงตัวจะสรุปว่าเขียนไม่สำเร็จทั้งที่เข้าเครื่องแล้ว แล้ววนเขียนซ้ำจนกลายเป็น failed
+  const wanted = canonicalEmployeeCode(plan.employeeCode);
+  const verified = after.find((u) => canonicalEmployeeCode(u.userId) === wanted);
   if (!verified) throw new Error(`เขียนรหัส ${plan.employeeCode} แล้ว แต่อ่านยืนยันกลับจากเครื่องไม่พบ`);
   if (Number(verified.uid) !== plan.uid) {
     throw new Error(`UID ที่อ่านกลับไม่ตรง (คาด ${plan.uid}, ได้ ${verified.uid})`);

@@ -8,11 +8,13 @@ import { createReader, describeSource } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
+import { withDeviceLock } from "./lock.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const config = loadConfig(root);
 const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
 const statePath = path.join(root, "state.json");
+const lockPath = path.join(root, ".sync.lock");
 
 let client;
 try {
@@ -36,27 +38,30 @@ async function tick() {
   }
   running = true;
   try {
-    await runSync({ config, logger, statePath, readAttendance, pushRows, client });
-    if (config.employeeImport.enabled) {
-      try {
-        const result = await runEmployeeImportQueue({
-          client,
-          branch: config.branch.code,
-          workerId: config.employeeImport.workerId,
-          limit: config.employeeImport.batchSize,
-          device: config.device,
-          logger,
-        });
-        if (result.claimed > 0) {
-          logger.info(
-            `คิวนำเข้าพนักงาน: รับ ${result.claimed} · สำเร็จ ${result.completed} · ไม่สำเร็จ ${result.failed}`,
-          );
+    // ถือล็อกตลอดรอบ เพื่อให้ CLI ที่คนหน้างานสั่งเองรู้ว่าห้ามแตะเครื่องตอนนี้
+    await withDeviceLock(lockPath, "service", async () => {
+      await runSync({ config, logger, statePath, readAttendance, pushRows, client });
+      if (config.employeeImport.enabled) {
+        try {
+          const result = await runEmployeeImportQueue({
+            client,
+            branch: config.branch.code,
+            workerId: config.employeeImport.workerId,
+            limit: config.employeeImport.batchSize,
+            device: config.device,
+            logger,
+          });
+          if (result.claimed > 0) {
+            logger.info(
+              `คิวนำเข้าพนักงาน: รับ ${result.claimed} · สำเร็จ ${result.completed} · ไม่สำเร็จ ${result.failed}`,
+            );
+          }
+        } catch (e) {
+          // คิวพนักงานล้มต้องไม่ขัดขวาง attendance sync ซึ่งเป็นงานหลัก
+          logger.err(`อ่านคิวนำเข้าพนักงานไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
         }
-      } catch (e) {
-        // คิวพนักงานล้มต้องไม่ขัดขวาง attendance sync ซึ่งเป็นงานหลัก
-        logger.err(`อ่านคิวนำเข้าพนักงานไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
       }
-    }
+    });
   } catch (e) {
     // runSync บันทึก state และ log ไว้แล้ว ตรงนี้แค่กันไม่ให้ service ตาย
     logger.err(`รอบนี้ไม่สำเร็จ: ${e.message}`);
