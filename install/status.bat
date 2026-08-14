@@ -25,7 +25,8 @@ set "TODAY="
 for /f "delims=" %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set "TODAY=%%d"
 set "LOGFILE=%ROOT%\logs\sync-!TODAY!.log"
 if exist "!LOGFILE!" (
-    powershell -NoProfile -Command "Get-Content -Path '!LOGFILE!' -Tail 20"
+    REM -Encoding UTF8 จำเป็น — Windows PowerShell 5.1 อ่านไฟล์ไม่มี BOM ด้วย cp874 ทำให้ภาษาไทยเพี้ยน
+    powershell -NoProfile -Command "Get-Content -Path '!LOGFILE!' -Tail 20 -Encoding UTF8"
 ) else (
     echo   ยังไม่มี log ของวันนี้ที่ !LOGFILE!
 )
