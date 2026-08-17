@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import iconv from "iconv-lite";
 import {
+  employeeFirstNameForDevice,
   encodeUserPacket,
   importEmployeeToDevice,
   planEmployeeUpsert,
@@ -43,6 +44,21 @@ test("สร้าง ZK8 user packet ใหม่ขนาด 72 ไบต์�
   assert.equal(iconv.decode(packet.subarray(11, 35), "cp874").split("\0")[0], "ทดสอบ 888");
   assert.equal(packet.readUInt32LE(35), 1234);
   assert.equal(packet.readUInt8(2), 0);
+});
+
+test("ส่งเฉพาะชื่อก่อนตัวคั่นนามสกุลของระบบ HR เข้าเครื่อง", () => {
+  assert.equal(employeeFirstNameForDevice("จิตรลดา .ต่วนเอี่ยม (มด)"), "จิตรลดา");
+  const plan = planEmployeeUpsert(
+    [],
+    { employee_code: "125", employee_name: "จิตรลดา .ต่วนเอี่ยม (มด)" },
+  );
+  const packet = encodeUserPacket(plan);
+  assert.equal(plan.employeeName, "จิตรลดา");
+  assert.equal(iconv.decode(packet.subarray(11, 35), "cp874").split("\0")[0], "จิตรลดา");
+});
+
+test("ชื่อที่ไม่มีตัวคั่นนามสกุลต้องคงเดิม", () => {
+  assert.equal(employeeFirstNameForDevice("ทดสอบ 888"), "ทดสอบ 888");
 });
 
 test("อัปเดตพนักงานเดิมต้องรักษา privilege/password/group/reserved เดิม", () => {

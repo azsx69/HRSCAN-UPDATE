@@ -17,13 +17,23 @@ function clearAndCopyField(target, offset, length, value, encoding = "ascii") {
   encoded.copy(target, offset, 0, Math.min(encoded.length, length));
 }
 
+// ระบบ HR ส่งชื่อในรูปแบบ "ชื่อ .นามสกุล (ชื่อเล่น)" แต่เครื่องสแกนต้องการเฉพาะชื่อ
+// ใช้ตัวคั่น " ." ที่ระบบ HR กำหนดเท่านั้น เพื่อไม่ตัดชื่อรูปแบบอื่นที่มีช่องว่างโดยไม่ตั้งใจ
+export function employeeFirstNameForDevice(value) {
+  const fullName = String(value ?? "").trim();
+  if (!fullName) throw new Error("ชื่อพนักงานห้ามว่าง");
+  const separator = fullName.search(/\s+\./);
+  const firstName = (separator >= 0 ? fullName.slice(0, separator) : fullName).trim();
+  if (!firstName) throw new Error("ชื่อพนักงานก่อนนามสกุลห้ามว่าง");
+  return firstName;
+}
+
 function normalizeEmployee(row) {
   const employeeCode = String(row?.employee_code ?? "").trim();
-  const employeeName = String(row?.employee_name ?? "").trim();
+  const employeeName = employeeFirstNameForDevice(row?.employee_name);
   if (!/^[A-Za-z0-9_-]{1,24}$/.test(employeeCode)) {
     throw new Error("รหัสพนักงานต้องมี 1-24 ตัว และใช้ได้เฉพาะ A-Z, a-z, 0-9, _ หรือ -");
   }
-  if (!employeeName) throw new Error("ชื่อพนักงานห้ามว่าง");
   const nameBytes = iconv.encode(employeeName, "cp874");
   if (nameBytes.length > 24) throw new Error("ชื่อพนักงานยาวเกิน 24 ไบต์สำหรับเครื่อง ZKTeco");
   if (iconv.decode(nameBytes, "cp874") !== employeeName) {
