@@ -155,3 +155,15 @@ test("employee import queue ปิดเป็นค่าเริ่มต้�
   // ไม่ตั้ง worker_id ต้องตกไปที่ machine_code ของสาขานั้น ไม่ใช่ชื่อเครื่องของ Store 2
   assert.equal(store3.employeeImport.workerId, "FP-03");
 });
+
+test("device inventory ปิดเป็นค่าเริ่มต้นและตั้งรอบแยกจาก attendance sync", () => {
+  const disabled = loadConfig(makeRoot("[sync]\ninterval_minutes = 5\n"));
+  const enabled = loadConfig(makeRoot(
+    "[sync]\ninterval_minutes = 5\n[device_inventory]\nenabled = true\ninterval_minutes = 90\n",
+  ));
+  assert.equal(disabled.deviceInventory.enabled, false);
+  assert.equal(disabled.deviceInventory.intervalMinutes, 60);
+  assert.equal(enabled.deviceInventory.enabled, true);
+  assert.equal(enabled.deviceInventory.intervalMinutes, 90);
+  assert.equal(enabled.sync.intervalMinutes, 5);
+});

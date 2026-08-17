@@ -8,7 +8,10 @@ import { createReader, describeSource } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
+import { isInventoryDue, syncDeviceInventory } from "./deviceInventory.mjs";
 import { withDeviceLock } from "./lock.mjs";
+import { readState, writeState } from "./state.mjs";
+import { toThaiStamp } from "./thaiTime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const config = loadConfig(root);
@@ -61,6 +64,34 @@ async function tick() {
           logger.err(`อ่านคิวนำเข้าพนักงานไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
         }
       }
+      if (config.deviceInventory.enabled && config.source.type === "device") {
+        const state = readState(statePath);
+        const attemptedAt = new Date();
+        if (isInventoryDue(state.last_inventory_attempt_at, config.deviceInventory.intervalMinutes, attemptedAt)) {
+          writeState(statePath, { last_inventory_attempt_at: toThaiStamp(attemptedAt) });
+          try {
+            const result = await syncDeviceInventory({
+              client,
+              branch: config.branch.code,
+              machineCode: config.branch.machineCode,
+              device: config.device,
+              logger,
+            });
+            writeState(statePath, {
+              last_inventory_sync_at: toThaiStamp(new Date()),
+              last_inventory_result: "ok",
+              last_inventory_error: null,
+              last_inventory_count: result.present,
+            });
+          } catch (e) {
+            logger.err(`ส่ง inventory เครื่องไม่สำเร็จ (${e.message}) — จะลองใหม่ตามรอบ inventory`);
+            writeState(statePath, {
+              last_inventory_result: "error",
+              last_inventory_error: e.message,
+            });
+          }
+        }
+      }
     });
   } catch (e) {
     // runSync บันทึก state และ log ไว้แล้ว ตรงนี้แค่กันไม่ให้ service ตาย
@@ -73,6 +104,9 @@ async function tick() {
 logger.info(
   `เริ่มทำงาน — สาขา ${config.branch.code} · ${describeSource(config)} · ทุก ${config.sync.intervalMinutes} นาที`,
 );
+if (config.deviceInventory.enabled && config.source.type !== "device") {
+  logger.err("เปิด device inventory ไว้ แต่ source ไม่ใช่ device — จะไม่ต่อเครื่องโดยตรงเพื่อไม่ชนกับ ZKBioTime");
+}
 
 await tick();
 const timer = setInterval(tick, Math.max(1, config.sync.intervalMinutes) * 60_000);

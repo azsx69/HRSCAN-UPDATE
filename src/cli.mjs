@@ -4,6 +4,7 @@
 //   node src\cli.mjs test-supabase  ทดสอบต่อ Supabase
 //   node src\cli.mjs sync-now       สั่ง sync 1 รอบแบบเห็นผลบนจอ
 //   node src\cli.mjs sync-range <ตั้งแต่> <ถึง>   ดึงย้อนหลังตามช่วงวันที่ โดยไม่แตะตัวจำของ service
+//   node src\cli.mjs sync-inventory-now   อ่านรายชื่อผู้ใช้ทั้งเครื่องขึ้น Supabase
 // ทุกคำสั่งคืน exit code 0 = สำเร็จ, 1 = ไม่สำเร็จ ให้ .bat เช็คได้
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -14,8 +15,9 @@ import { createReader, createTester, describeSource, isBiotime } from "./source.
 import { createClient, pushRows } from "./supabase.mjs";
 import { runRange, runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
+import { syncDeviceInventory } from "./deviceInventory.mjs";
 import { acquireDeviceLock } from "./lock.mjs";
-import { readState } from "./state.mjs";
+import { readState, writeState } from "./state.mjs";
 import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,10 +39,20 @@ function showStatus(config) {
   console.log(`แหล่งข้อมูล     : ${describeSource(config)}`);
   console.log(`ความถี่        : ทุก ${config.sync.intervalMinutes} นาที`);
   console.log(`คิวนำเข้าพนักงาน: ${config.employeeImport.enabled ? `เปิด (ครั้งละ ${config.employeeImport.batchSize})` : "ปิด"}`);
+  console.log(
+    `inventory เครื่อง : ${config.deviceInventory.enabled ? `เปิด (ทุก ${config.deviceInventory.intervalMinutes} นาที)` : "ปิด"}`,
+  );
   console.log(`เริ่มดึงตั้งแต่   : ${config.sync.startDate || "(ไม่กำหนด)"}`);
   console.log(`สแกนถึง        : ${s.last_scan_at ?? "ยังไม่เคยส่ง"}`);
   console.log(`รันล่าสุด       : ${s.last_run_at ?? "-"}  (${s.last_result ?? "-"})`);
   console.log(`ส่งสะสม        : ${s.pushed_total.toLocaleString()} แถว`);
+  if (config.deviceInventory.enabled) {
+    console.log(
+      `inventory ล่าสุด : ${s.last_inventory_sync_at ?? "ยังไม่เคยส่ง"}  ` +
+        `(${s.last_inventory_result ?? "-"}, ${s.last_inventory_count.toLocaleString()} คน)`,
+    );
+    if (s.last_inventory_error) console.log(`inventory error  : ${s.last_inventory_error}`);
+  }
   if (s.last_error) console.log(`ข้อผิดพลาดล่าสุด : ${s.last_error}`);
   return 0;
 }
@@ -168,6 +180,38 @@ async function importUsersNow(config) {
   }
 }
 
+async function syncInventoryNow(config) {
+  if (isBiotime(config)) {
+    console.log("inventory รองรับเฉพาะ source = device — ห้ามต่อตรงเมื่อ ZKBioTime ยึดเครื่องอยู่");
+    return 1;
+  }
+  const logger = createLogger({ dir: path.join(root, "logs"), keepDays: config.log.keepDays });
+  const attemptedAt = new Date();
+  writeState(statePath, { last_inventory_attempt_at: toThaiStamp(attemptedAt) });
+  try {
+    const client = createClient(config.supabase);
+    const result = await syncDeviceInventory({
+      client,
+      branch: config.branch.code,
+      machineCode: config.branch.machineCode,
+      device: config.device,
+      logger,
+    });
+    writeState(statePath, {
+      last_inventory_sync_at: toThaiStamp(new Date()),
+      last_inventory_result: "ok",
+      last_inventory_error: null,
+      last_inventory_count: result.present,
+    });
+    console.log(`inventory: พบในเครื่อง ${result.present} · ไม่อยู่ในเครื่อง ${result.missing}`);
+    return 0;
+  } catch (e) {
+    writeState(statePath, { last_inventory_result: "error", last_inventory_error: e.message });
+    logger.err(`ส่ง inventory เครื่องไม่สำเร็จ: ${e.message}`);
+    return 1;
+  }
+}
+
 async function main() {
   const command = process.argv[2] ?? "status";
   const config = loadConfig(root);
@@ -189,6 +233,7 @@ async function main() {
     "sync-now": () => syncNow(config),
     "sync-range": () => syncRange(config, process.argv[3], process.argv[4]),
     "import-users-now": () => importUsersNow(config),
+    "sync-inventory-now": () => syncInventoryNow(config),
   };
   if (deviceCommands[command]) {
     let release;
@@ -207,7 +252,7 @@ async function main() {
   }
 
   console.log(
-    `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range | import-users-now`,
+    `ไม่รู้จักคำสั่ง "${command}" — ใช้ได้: status | test-source | test-supabase | sync-now | sync-range | import-users-now | sync-inventory-now`,
   );
   return 1;
 }
