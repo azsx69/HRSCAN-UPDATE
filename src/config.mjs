@@ -89,6 +89,11 @@ export function loadConfig(root = process.cwd()) {
       batchSize: num("employee_import", "batch_size", 10),
       workerId: cfg("employee_import", "worker_id", cfg("branch", "machine_code", branchCode)),
     },
+    deviceInventory: {
+      // ปิดจนกว่าจะติดตั้ง migration; รองรับเฉพาะสาขาที่ต่อเครื่องโดยตรง
+      enabled: cfg("device_inventory", "enabled", "false").toLowerCase() === "true",
+      intervalMinutes: num("device_inventory", "interval_minutes", 60),
+    },
     log: {
       keepDays: num("log", "keep_days", 30),
     },

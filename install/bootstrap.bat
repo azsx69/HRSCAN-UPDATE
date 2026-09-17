@@ -31,14 +31,17 @@ set "CUR_INTERVAL=5"
 set "CUR_START=2026-01-01"
 set "CUR_SOURCE=device"
 set "CUR_IMPORT=false"
+set "CUR_INVENTORY=false"
+set "CUR_INVENTORY_INTERVAL=60"
 set "CUR_PSQL=C:\ZKBioTime\pgsql\bin\psql.exe"
 set "CUR_DB=biotime"
-REM ตัวอ่านนี้ไม่แยกหมวด จึงใช้ค่าแรกที่เจอสำหรับคีย์ที่ซ้ำกันข้ามหมวด (port มีทั้ง [device] และ [biotime])
+set "CFG_SECTION="
 for /f "usebackq tokens=1,* delims==" %%A in ("config.ini") do (
     set "K=%%A"
     set "K=!K: =!"
     set "V=%%B"
     for /f "tokens=* delims= " %%x in ("!V!") do set "V=%%x"
+    if "!K:~0,1!"=="[" set "CFG_SECTION=!K!"
     if /i "!K!"=="code" if not defined GOT_BRANCH ( set "CUR_BRANCH=!V!" & set "GOT_BRANCH=1" )
     if /i "!K!"=="machine_code" set "CUR_MACHINE=!V!"
     if /i "!K!"=="type" set "CUR_SOURCE=!V!"
@@ -46,9 +49,11 @@ for /f "usebackq tokens=1,* delims==" %%A in ("config.ini") do (
     if /i "!K!"=="port" if not defined GOT_PORT ( set "CUR_PORT=!V!" & set "GOT_PORT=1" )
     if /i "!K!"=="psql_path" set "CUR_PSQL=!V!"
     if /i "!K!"=="database" set "CUR_DB=!V!"
-    if /i "!K!"=="interval_minutes" set "CUR_INTERVAL=!V!"
-    if /i "!K!"=="start_date" set "CUR_START=!V!"
-    if /i "!K!"=="enabled" set "CUR_IMPORT=!V!"
+    if /i "!CFG_SECTION!"=="[sync]" if /i "!K!"=="interval_minutes" set "CUR_INTERVAL=!V!"
+    if /i "!CFG_SECTION!"=="[sync]" if /i "!K!"=="start_date" set "CUR_START=!V!"
+    if /i "!CFG_SECTION!"=="[employee_import]" if /i "!K!"=="enabled" set "CUR_IMPORT=!V!"
+    if /i "!CFG_SECTION!"=="[device_inventory]" if /i "!K!"=="enabled" set "CUR_INVENTORY=!V!"
+    if /i "!CFG_SECTION!"=="[device_inventory]" if /i "!K!"=="interval_minutes" set "CUR_INVENTORY_INTERVAL=!V!"
 )
 
 echo --- สาขา ---
@@ -104,11 +109,25 @@ echo   เปิดได้เฉพาะสาขาที่ต่อเค�
 set "IMPORT_ENABLED=!CUR_IMPORT!"
 set /p "IMPORT_ENABLED=เปิดคิวนำเข้าพนักงาน? true/false [!CUR_IMPORT!]: "
 
+echo.
+echo --- ตรวจรายชื่อผู้ใช้ที่ถูกเพิ่มหน้าเครื่อง ---
+echo   อ่านรายชื่อทั้งเครื่องขึ้น Supabase อย่างเดียว ไม่แก้หรือลบข้อมูลในเครื่อง
+set "INVENTORY_ENABLED=!CUR_INVENTORY!"
+set "INVENTORY_INTERVAL=!CUR_INVENTORY_INTERVAL!"
+if "!SRC_TYPE!"=="biotime" (
+    set "INVENTORY_ENABLED=false"
+    echo   ปิดอัตโนมัติ เพราะ source = biotime ไม่สามารถต่อเครื่องโดยตรงได้
+) else (
+    set /p "INVENTORY_ENABLED=เปิด device inventory? true/false [!CUR_INVENTORY!]: "
+    set /p "INVENTORY_INTERVAL=อ่านทุกกี่นาที [!CUR_INVENTORY_INTERVAL!]: "
+)
+
 node install\patch-config.mjs config.ini ^
     "branch.code=!BRANCH!" "branch.machine_code=!MACHINE!" ^
     "source.type=!SRC_TYPE!" ^
     "sync.interval_minutes=!INTERVAL!" "sync.start_date=!START_DATE!" ^
-    "employee_import.enabled=!IMPORT_ENABLED!"
+    "employee_import.enabled=!IMPORT_ENABLED!" ^
+    "device_inventory.enabled=!INVENTORY_ENABLED!" "device_inventory.interval_minutes=!INVENTORY_INTERVAL!"
 if errorlevel 1 ( echo  [x] เขียน config.ini ไม่สำเร็จ & pause & exit /b 1 )
 
 REM เขียนเฉพาะค่าของแหล่งที่เลือก — ค่าของอีกแหล่งคงไว้เผื่อสลับกลับ

@@ -10,6 +10,11 @@ const DEFAULT_STATE = {
   last_result: null,    // "ok" | "error" | "empty"
   last_error: null,
   pushed_total: 0,
+  last_inventory_attempt_at: null,
+  last_inventory_sync_at: null,
+  last_inventory_result: null,
+  last_inventory_error: null,
+  last_inventory_count: 0,
 };
 
 export function readState(file) {

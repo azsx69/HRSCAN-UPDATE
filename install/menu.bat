@@ -78,12 +78,14 @@ echo.
 echo    1. sync เดี๋ยวนี้ (ส่งต่อจากที่ค้างไว้)
 echo    2. ดึงข้อมูลย้อนหลังตามช่วงวันที่
 echo    3. นำเข้าพนักงานจากคิว Supabase เดี๋ยวนี้
+echo    4. อ่านรายชื่อผู้ใช้ทั้งเครื่องขึ้น inventory เดี๋ยวนี้
 echo    0. กลับ
 set "S="
 set /p "S=เลือก: "
 if "%S%"=="1" ( call :runcli sync-now & pause )
 if "%S%"=="2" ( call :askrange & pause )
 if "%S%"=="3" ( call :runcli import-users-now & pause )
+if "%S%"=="4" ( call :runcli sync-inventory-now & pause )
 exit /b 0
 
 REM -- ถามช่วงวันที่แล้วส่งต่อให้ cli ตรวจรูปแบบเอง (โหมดนี้ไม่แตะตัวจำของ service)
