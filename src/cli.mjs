@@ -15,6 +15,7 @@ import { createClient, pushRows } from "./supabase.mjs";
 import { runRange, runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
 import { acquireDeviceLock } from "./lock.mjs";
+import { describeDrift, measureDeviceClockDrift } from "./deviceClock.mjs";
 import { readState } from "./state.mjs";
 import { parseThaiStamp, toThaiStamp } from "./thaiTime.mjs";
 
@@ -53,6 +54,14 @@ async function checkSource(config) {
     if (r.latest) console.log(`     สแกนล่าสุดที่บันทึกไว้: ${toThaiStamp(r.latest)}`);
     // ให้คนหน้างานยืนยันด้วยตาว่าชื่อไทยไม่เพี้ยน — เป็นอาการที่ test อัตโนมัติจับไม่ได้
     if (r.sampleName) console.log(`     ตัวอย่างชื่อพนักงาน: ${r.sampleName}  <- ถ้าอ่านไม่ออกแปลว่า encoding เพี้ยน`);
+    if (!isBiotime(config)) {
+      // ดูอย่างเดียว — service เป็นคนตั้งเวลาให้ทุกรอบ
+      try {
+        console.log(`     นาฬิกาเครื่องสแกน: ${describeDrift(await measureDeviceClockDrift(config.device))}`);
+      } catch (e) {
+        console.log(`     อ่านนาฬิกาเครื่องสแกนไม่ได้: ${e.message}`);
+      }
+    }
     return 0;
   } catch (e) {
     console.log(`[ไม่สำเร็จ] ${e.message}`);

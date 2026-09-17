@@ -4,11 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.mjs";
 import { createLogger } from "./logger.mjs";
-import { createReader, describeSource } from "./source.mjs";
+import { createReader, describeSource, isBiotime } from "./source.mjs";
 import { createClient, pushRows } from "./supabase.mjs";
 import { runSync } from "./sync.mjs";
 import { runEmployeeImportQueue } from "./employeeImport.mjs";
 import { withDeviceLock } from "./lock.mjs";
+import { createDeviceClockSync } from "./deviceClock.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const config = loadConfig(root);
@@ -26,6 +27,11 @@ try {
 
 // อ่านจากเครื่องสแกนตรง หรือจากฐานของ ZKBioTime ตาม [source] type ที่สาขาตั้งไว้
 const readAttendance = createReader(config);
+
+// ZKBioTime ยึดการเชื่อมต่อเครื่องไว้ จึงตั้งนาฬิกาได้เฉพาะสาขาที่ต่อเครื่องตรง
+const syncDeviceClock = isBiotime(config)
+  ? null
+  : createDeviceClockSync({ device: config.device, supabase: config.supabase, logger });
 
 // รอบก่อนยังไม่จบห้ามเริ่มรอบใหม่ — เครื่อง ZKTeco รับได้ทีละ 1 การเชื่อมต่อ และ state.json
 // ก็ต้องไม่ถูกเขียนพร้อมกันจากสองรอบ
@@ -59,6 +65,14 @@ async function tick() {
         } catch (e) {
           // คิวพนักงานล้มต้องไม่ขัดขวาง attendance sync ซึ่งเป็นงานหลัก
           logger.err(`อ่านคิวนำเข้าพนักงานไม่ได้ (${e.message}) — จะลองใหม่รอบหน้า`);
+        }
+      }
+      if (syncDeviceClock) {
+        try {
+          await syncDeviceClock();
+        } catch (e) {
+          // ตั้งนาฬิกาล้มต้องไม่ขัดขวาง attendance sync ซึ่งเป็นงานหลัก
+          logger.err(`ตรวจนาฬิกาเครื่องสแกนไม่สำเร็จ (${e.message}) — จะลองใหม่รอบหน้า`);
         }
       }
     });
