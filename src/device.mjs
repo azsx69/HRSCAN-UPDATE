@@ -60,7 +60,7 @@ export function padEmployeeCode(id) {
   return /^\d+$/.test(id) ? id.padStart(3, "0") : id;
 }
 
-function decodeDeviceTime(value) {
+export function decodeDeviceTime(value) {
   const second = value % 60;
   value = Math.floor(value / 60);
   const minute = value % 60;
@@ -78,6 +78,13 @@ function decodeDeviceTime(value) {
     || result.getHours() !== hour || result.getMinutes() !== minute || result.getSeconds() !== second
   ) return null;
   return result;
+}
+
+// ทางกลับของ decodeDeviceTime — ใช้ตอนตั้งนาฬิกาเครื่อง
+// อ่านค่าด้วย getter แบบ local เพราะทั้งระบบถือว่าเวลาท้องถิ่นของ PC คือเวลาไทย (ดู thaiTime.mjs)
+export function encodeDeviceTime(date) {
+  const days = (date.getFullYear() % 100) * 12 * 31 + date.getMonth() * 31 + date.getDate() - 1;
+  return ((days * 24 + date.getHours()) * 60 + date.getMinutes()) * 60 + date.getSeconds();
 }
 
 function detectAttendancePacketSize(payloadLength, logCount, requestedSize) {

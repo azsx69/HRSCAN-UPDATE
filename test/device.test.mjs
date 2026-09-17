@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildRecords, decodeAttendanceData, getAttendanceLogs, getUsersThai } from "../src/device.mjs";
+import {
+  buildRecords,
+  decodeAttendanceData,
+  decodeDeviceTime,
+  encodeDeviceTime as encodeDeviceDate,
+  getAttendanceLogs,
+  getUsersThai,
+} from "../src/device.mjs";
 
 const users = [
   { userId: "1", name: "สมชาย ใจดี" },
@@ -153,4 +160,26 @@ test("ปฏิเสธ user buffer ที่ read ไม่ครบและ 
   };
   await assert.rejects(() => getUsersThai(zk), /users partial timeout/);
   assert.equal(frees, 2);
+});
+
+test("encodeDeviceTime ได้ค่าตามสูตร ZKTeco", () => {
+  // ((26*12*31 + 8*31 + 16) * 86400) + (10*60 + 25)*60 + 12
+  assert.equal(encodeDeviceDate(new Date(2026, 8, 17, 10, 25, 12)), 858507912);
+});
+
+test("encodeDeviceTime แล้ว decodeDeviceTime กลับได้เวลาเดิม", () => {
+  const samples = [
+    new Date(2026, 8, 17, 10, 25, 12),
+    new Date(2026, 0, 1, 0, 0, 0),
+    new Date(2026, 11, 31, 23, 59, 59),
+    new Date(2028, 1, 29, 12, 0, 0),
+    new Date(2099, 11, 31, 23, 59, 59),
+  ];
+  for (const date of samples) {
+    assert.equal(decodeDeviceTime(encodeDeviceDate(date))?.getTime(), date.getTime(), date.toString());
+  }
+});
+
+test("encodeDeviceTime ของปี 2099 ยังไม่เกิน uint32", () => {
+  assert.ok(encodeDeviceDate(new Date(2099, 11, 31, 23, 59, 59)) <= 0xffffffff);
 });
