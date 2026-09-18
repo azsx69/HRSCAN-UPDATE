@@ -3,6 +3,7 @@
 //
 // เมนูข้อ 5 หยุด service ให้ก่อนอยู่แล้ว แต่คนที่รัน `node src\cli.mjs` เองจากบรรทัดคำสั่งไม่ได้ผ่านทางนั้น
 // ล็อกนี้จึงเป็นตาข่ายชั้นสุดท้าย: ทั้ง service และ CLI ต้องถือล็อกก่อนแตะเครื่องเสมอ
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
 // โปรเซสที่จับ PID นี้ไว้ยังอยู่ไหม — EPERM แปลว่ามีอยู่จริงแต่คนละสิทธิ์ (service รันด้วย LocalSystem)
@@ -10,9 +11,25 @@ function isAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (e) {
-    return e.code === "EPERM";
+    if (e.code !== "EPERM") return false;
+  }
+  return isNodeProcess(pid);
+}
+
+// Windows เอา PID ของโปรเซสที่ตายแล้วไปให้โปรเซสอื่นใช้ต่อ — ถ้า service ถูก kill กลางรอบ
+// ล็อกจะชี้ไปที่ svchost.exe หรืออะไรก็ได้ที่ได้ PID นั้นไป แล้วค้างถาวร จึงต้องเช็คว่ายังเป็น node อยู่
+function isNodeProcess(pid) {
+  if (process.platform !== "win32") return true;
+  try {
+    const out = execFileSync("tasklist", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    return /^"node\.exe",/im.test(out);
+  } catch {
+    // เรียก tasklist ไม่ได้ = ไม่รู้แน่ ถือว่ายังมีชีวิตไว้ก่อน ดีกว่าสองโปรเซสแย่งเครื่องกัน
+    return true;
   }
 }
 
